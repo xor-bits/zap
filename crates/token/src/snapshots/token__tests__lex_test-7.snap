@@ -2,78 +2,98 @@
 source: crates/token/src/lib.rs
 expression: lex(&all_tokens)
 ---
-- "structtest;:==(){}+-*/->:@//"
+- ";=(){}+-*/:,@&<><=>=:=->structtest"
 - Ok: ~
-- - token: Struct
+- - token: Semi
     span:
-      range: 0..6
-      str: struct
-  - token: Test
-    span:
-      range: 6..10
-      str: test
-  - token: Semi
-    span:
-      range: 10..11
+      range: 0..1
       str: ;
-  - token: Init
-    span:
-      range: 11..13
-      str: ":="
   - token: Assign
     span:
-      range: 13..14
+      range: 1..2
       str: "="
   - token: LParen
     span:
-      range: 14..15
+      range: 2..3
       str: (
   - token: RParen
     span:
-      range: 15..16
+      range: 3..4
       str: )
   - token: Lbrace
     span:
-      range: 16..17
+      range: 4..5
       str: "{"
   - token: Rbrace
     span:
-      range: 17..18
+      range: 5..6
       str: "}"
   - token: Plus
     span:
-      range: 18..19
+      range: 6..7
       str: +
   - token: Minus
     span:
-      range: 19..20
+      range: 7..8
       str: "-"
   - token: Asterisk
     span:
-      range: 20..21
+      range: 8..9
       str: "*"
   - token: Slash
     span:
-      range: 21..22
+      range: 9..10
       str: /
+  - token: Type
+    span:
+      range: 10..11
+      str: ":"
+  - token: Comma
+    span:
+      range: 11..12
+      str: ","
+  - token: Extern
+    span:
+      range: 12..13
+      str: "@"
+  - token: Ampersand
+    span:
+      range: 13..14
+      str: "&"
+  - token: Lt
+    span:
+      range: 14..15
+      str: "<"
+  - token: Gt
+    span:
+      range: 15..16
+      str: ">"
+  - token: Le
+    span:
+      range: 16..18
+      str: "<="
+  - token: Ge
+    span:
+      range: 18..20
+      str: ">="
+  - token: Init
+    span:
+      range: 20..22
+      str: ":="
   - token: Arrow
     span:
       range: 22..24
       str: "->"
-  - token: Type
+  - token: Struct
     span:
-      range: 24..25
-      str: ":"
-  - token: Extern
+      range: 24..30
+      str: struct
+  - token: Test
     span:
-      range: 25..26
-      str: "@"
-  - token: LineComment
-    span:
-      range: 26..28
-      str: //
+      range: 30..34
+      str: test
   - token: Eoi
     span:
-      range: 28..28
+      range: 34..34
       str: ""
 

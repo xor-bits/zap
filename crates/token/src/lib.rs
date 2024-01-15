@@ -45,20 +45,8 @@ pub enum Error {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum Token {
-    /// `struct`
-    Struct,
-
-    /// `test`
-    Test,
-
-    /// identifiers like `_fn_name`
-    Ident,
-
     /// `;`
     Semi,
-
-    /// `:=`
-    Init,
 
     /// `=`
     Assign,
@@ -87,17 +75,47 @@ pub enum Token {
     /// `/`
     Slash,
 
-    /// `->`
-    Arrow,
-
     /// `:`
     Type,
+
+    /// `,`
+    Comma,
 
     /// `@`
     Extern,
 
-    /// `//`
+    /// `&`
+    Ampersand,
+
+    /// `<`
+    Lt,
+
+    /// `>`
+    Gt,
+
+    /// `<=`
+    Le,
+
+    /// `>=`
+    Ge,
+
+    /// `:=`
+    Init,
+
+    /// `->`
+    Arrow,
+
+    /// `struct`
+    Struct,
+
+    /// `test`
+    Test,
+
+    /// single line comments like `// this is a comment`
     LineComment,
+
+    /// identifiers like `_fn_name`
+    Ident,
 
     /// integer literal like `0xFFu8`
     LitInt(i128),
@@ -112,11 +130,7 @@ pub enum Token {
 impl Token {
     pub const fn enumerate() -> &'static [Self] {
         &exhaustive![
-            Token::Struct,
-            Token::Test,
-            Token::Ident,
             Token::Semi,
-            Token::Init,
             Token::Assign,
             Token::LParen,
             Token::RParen,
@@ -126,10 +140,20 @@ impl Token {
             Token::Minus,
             Token::Asterisk,
             Token::Slash,
-            Token::Arrow,
             Token::Type,
+            Token::Comma,
             Token::Extern,
+            Token::Ampersand,
+            Token::Lt,
+            Token::Gt,
+            Token::Le,
+            Token::Ge,
+            Token::Init,
+            Token::Arrow,
+            Token::Struct,
+            Token::Test,
             Token::LineComment,
+            Token::Ident,
             Token::LitInt { 0: 0 },
             Token::LitStr,
             Token::Eoi,
@@ -138,11 +162,7 @@ impl Token {
 
     pub const fn as_token_str(self) -> Option<&'static str> {
         Some(match self {
-            Token::Struct {} => "struct",
-            Token::Test => "test",
-            Token::Ident => return None,
             Token::Semi => ";",
-            Token::Init => ":=",
             Token::Assign => "=",
             Token::LParen => "(",
             Token::RParen => ")",
@@ -152,13 +172,23 @@ impl Token {
             Token::Minus => "-",
             Token::Asterisk => "*",
             Token::Slash => "/",
-            Token::Arrow => "->",
             Token::Type => ":",
+            Token::Comma => ",",
             Token::Extern => "@",
-            Token::LineComment { .. } => "//",
+            Token::Ampersand => "&",
+            Token::Lt => "<",
+            Token::Gt => ">",
+            Token::Le => "<=",
+            Token::Ge => ">=",
+            Token::Init => ":=",
+            Token::Arrow => "->",
+            Token::Struct {} => "struct",
+            Token::Test => "test",
+            Token::LineComment { .. } => return None,
+            Token::Ident => return None,
             Token::LitInt { .. } => return None,
             Token::LitStr => return None,
-            Token::Eoi => "",
+            Token::Eoi => return None,
         })
     }
 }
@@ -289,16 +319,18 @@ impl<'a> Lexer<'a> {
                 !c.is_ascii_digit()
                     || if dot_found {
                         false
-                    } else {
+                    } else if c == '.' {
                         dot_found = true;
-                        c == '.'
+                        true
+                    } else {
+                        false
                     }
             })
             .map(|term| term + 1)
             .unwrap_or(self.at.len());
 
         let token = if dot_found {
-            todo!("LitFloat")
+            todo!("LitFloat {}", &self.at[..term])
         } else {
             let num = self.at[..term].parse::<i128>().unwrap(); // the unwrap should never fail
             Token::LitInt(num)
@@ -362,33 +394,32 @@ impl<'a> Iterator for Lexer<'a> {
         self.eoi.as_ref()?;
         self.at = self.at.trim();
 
-        // keywords first, so that keywords have a priority over idents
-        some!(self.try_match(Token::Struct));
-        some!(self.try_match(Token::Test));
+        // tokens in the order of 'more specific -> less specific' to emulate priority
+        // for example := should be parsed as Init instead of Type and Assign
 
         // custom tokens
         some!(self.try_match_str());
-        some!(self.try_match_ident());
         some!(self.try_match_comment());
         some!(self.try_match_number());
 
-        // simple tokens in the order of more specific -> less specific
-        // length of 2
-        some!(self.try_match(Token::Init));
-        some!(self.try_match(Token::Arrow));
-        // length of 1
-        some!(self.try_match(Token::Semi));
-        some!(self.try_match(Token::Assign));
-        some!(self.try_match(Token::LParen));
-        some!(self.try_match(Token::RParen));
-        some!(self.try_match(Token::Lbrace));
-        some!(self.try_match(Token::Rbrace));
-        some!(self.try_match(Token::Type));
-        some!(self.try_match(Token::Extern));
-        some!(self.try_match(Token::Plus));
-        some!(self.try_match(Token::Minus));
-        some!(self.try_match(Token::Asterisk));
-        some!(self.try_match(Token::Slash));
+        // simple const str tokens
+        for (_, token) in Token::enumerate()
+            .iter()
+            .rev()
+            .copied()
+            .filter(|tok| tok.as_token_str().is_some())
+            // just a debug assert to make sure that the tokens are in the correct order
+            .scan(usize::MAX, |prev, now| {
+                let len = now.as_token_str().map(str::len).unwrap_or(0);
+                debug_assert!(*prev >= len);
+                Some((len, now))
+            })
+        {
+            some!(self.try_match(token));
+        }
+
+        // idents after keywords
+        some!(self.try_match_ident());
 
         if !self.at.is_empty() {
             self.err = Err(Error::ExtraTokens);
