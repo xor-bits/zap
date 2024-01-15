@@ -6,20 +6,14 @@ expression: "lex(\"// comment\\ncode\")"
 - Ok: ~
 - - token: LineComment
     span:
-      range:
-        start: 0
-        end: 10
+      range: 0..10
       str: // comment
   - token: Ident
     span:
-      range:
-        start: 11
-        end: 15
+      range: 11..15
       str: code
   - token: Eoi
     span:
-      range:
-        start: 15
-        end: 15
+      range: 15..15
       str: ""
 

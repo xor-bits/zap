@@ -12,6 +12,23 @@ macro_rules! some {
     };
 }
 
+macro_rules! exhaustive {
+    ($($tok:ident::$var:ident $({ $($t:tt)* })?,)*) => {{
+        use crate::Token::*;
+
+        #[allow(unreachable_code)]
+        fn _assert_exhaustive() {
+            match unreachable!() {
+                $($var { .. } => {})*
+            }
+        }
+
+        [
+            $($tok::$var $({ $($t)* })?),*
+        ]
+    }};
+}
+
 //
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -58,6 +75,18 @@ pub enum Token {
     /// `}`
     Rbrace,
 
+    /// `+`
+    Plus,
+
+    /// `-`
+    Minus,
+
+    /// `*`
+    Asterisk,
+
+    /// `/`
+    Slash,
+
     /// `->`
     Arrow,
 
@@ -82,7 +111,7 @@ pub enum Token {
 
 impl Token {
     pub const fn enumerate() -> &'static [Self] {
-        &[
+        &exhaustive![
             Token::Struct,
             Token::Test,
             Token::Ident,
@@ -93,11 +122,15 @@ impl Token {
             Token::RParen,
             Token::Lbrace,
             Token::Rbrace,
+            Token::Plus,
+            Token::Minus,
+            Token::Asterisk,
+            Token::Slash,
             Token::Arrow,
             Token::Type,
             Token::Extern,
             Token::LineComment,
-            Token::LitInt(0),
+            Token::LitInt { 0: 0 },
             Token::LitStr,
             Token::Eoi,
         ]
@@ -105,7 +138,7 @@ impl Token {
 
     pub const fn as_token_str(self) -> Option<&'static str> {
         Some(match self {
-            Token::Struct => "struct",
+            Token::Struct {} => "struct",
             Token::Test => "test",
             Token::Ident => return None,
             Token::Semi => ";",
@@ -115,11 +148,15 @@ impl Token {
             Token::RParen => ")",
             Token::Lbrace => "{",
             Token::Rbrace => "}",
+            Token::Plus => "+",
+            Token::Minus => "-",
+            Token::Asterisk => "*",
+            Token::Slash => "/",
             Token::Arrow => "->",
             Token::Type => ":",
             Token::Extern => "@",
-            Token::LineComment => "//",
-            Token::LitInt(_) => return None,
+            Token::LineComment { .. } => "//",
+            Token::LitInt { .. } => return None,
             Token::LitStr => return None,
             Token::Eoi => "",
         })
@@ -174,7 +211,7 @@ impl Serialize for Span<'_> {
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("SpannedToken", 3)?;
-        s.serialize_field("range", &self.span())?;
+        s.serialize_field("range", &format!("{:?}", self.span()))?;
         s.serialize_field("str", &self.str())?;
         s.end()
     }
@@ -239,6 +276,37 @@ impl<'a> Lexer<'a> {
         Some(self.spanned_token_to(token, str.len()))
     }
 
+    fn try_match_number(&mut self) -> Option<SpannedToken<'a>> {
+        let first = self.at.chars().next()?;
+
+        if !first.is_ascii_digit() {
+            return None;
+        }
+
+        let mut dot_found = false;
+        let term = self.at[1..]
+            .find(|c: char| {
+                !c.is_ascii_digit()
+                    || if dot_found {
+                        false
+                    } else {
+                        dot_found = true;
+                        c == '.'
+                    }
+            })
+            .map(|term| term + 1)
+            .unwrap_or(self.at.len());
+
+        let token = if dot_found {
+            todo!("LitFloat")
+        } else {
+            let num = self.at[..term].parse::<i128>().unwrap(); // the unwrap should never fail
+            Token::LitInt(num)
+        };
+
+        Some(self.spanned_token_to(token, term))
+    }
+
     fn try_match_str(&mut self) -> Option<SpannedToken<'a>> {
         if !self.at.starts_with('"') {
             return None;
@@ -294,22 +362,33 @@ impl<'a> Iterator for Lexer<'a> {
         self.eoi.as_ref()?;
         self.at = self.at.trim();
 
+        // keywords first, so that keywords have a priority over idents
         some!(self.try_match(Token::Struct));
         some!(self.try_match(Token::Test));
-        some!(self.try_match(Token::Semi));
+
+        // custom tokens
+        some!(self.try_match_str());
+        some!(self.try_match_ident());
+        some!(self.try_match_comment());
+        some!(self.try_match_number());
+
+        // simple tokens in the order of more specific -> less specific
+        // length of 2
         some!(self.try_match(Token::Init));
+        some!(self.try_match(Token::Arrow));
+        // length of 1
+        some!(self.try_match(Token::Semi));
         some!(self.try_match(Token::Assign));
         some!(self.try_match(Token::LParen));
         some!(self.try_match(Token::RParen));
         some!(self.try_match(Token::Lbrace));
         some!(self.try_match(Token::Rbrace));
-        some!(self.try_match(Token::Arrow));
         some!(self.try_match(Token::Type));
         some!(self.try_match(Token::Extern));
-
-        some!(self.try_match_str());
-        some!(self.try_match_ident());
-        some!(self.try_match_comment());
+        some!(self.try_match(Token::Plus));
+        some!(self.try_match(Token::Minus));
+        some!(self.try_match(Token::Asterisk));
+        some!(self.try_match(Token::Slash));
 
         if !self.at.is_empty() {
             self.err = Err(Error::ExtraTokens);

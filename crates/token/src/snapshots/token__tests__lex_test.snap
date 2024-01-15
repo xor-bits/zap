@@ -1,175 +1,119 @@
 ---
 source: crates/token/src/lib.rs
-expression: "(str, lexer.error(), tokens)"
+expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it\")"
 ---
 - "in->\"vali\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it"
 - Ok: ~
 - - token: Ident
     span:
-      range:
-        start: 0
-        end: 2
+      range: 0..2
       str: in
   - token: Arrow
     span:
-      range:
-        start: 2
-        end: 4
+      range: 2..4
       str: "->"
   - token: LitStr
     span:
-      range:
-        start: 4
-        end: 10
+      range: 4..10
       str: "\"vali\""
   - token: Extern
     span:
-      range:
-        start: 10
-        end: 11
+      range: 10..11
       str: "@"
   - token: Arrow
     span:
-      range:
-        start: 11
-        end: 13
+      range: 11..13
       str: "->"
   - token: Type
     span:
-      range:
-        start: 13
-        end: 14
+      range: 13..14
       str: ":"
   - token: Ident
     span:
-      range:
-        start: 14
-        end: 15
+      range: 14..15
       str: d
   - token: Ident
     span:
-      range:
-        start: 16
-        end: 20
+      range: 16..20
       str: synt
   - token: LParen
     span:
-      range:
-        start: 20
-        end: 21
+      range: 20..21
       str: (
   - token: Ident
     span:
-      range:
-        start: 21
-        end: 23
+      range: 21..23
       str: ax
   - token: Rbrace
     span:
-      range:
-        start: 23
-        end: 24
+      range: 23..24
       str: "}"
   - token: Lbrace
     span:
-      range:
-        start: 25
-        end: 26
+      range: 25..26
       str: "{"
   - token: Ident
     span:
-      range:
-        start: 26
-        end: 29
+      range: 26..29
       str: but
   - token: RParen
     span:
-      range:
-        start: 29
-        end: 30
+      range: 29..30
       str: )
   - token: Ident
     span:
-      range:
-        start: 31
-        end: 32
+      range: 31..32
       str: t
   - token: Semi
     span:
-      range:
-        start: 32
-        end: 33
+      range: 32..33
       str: ;
   - token: Ident
     span:
-      range:
-        start: 33
-        end: 34
+      range: 33..34
       str: h
   - token: Type
     span:
-      range:
-        start: 34
-        end: 35
+      range: 34..35
       str: ":"
   - token: Ident
     span:
-      range:
-        start: 35
-        end: 36
+      range: 35..36
       str: e
   - token: Ident
     span:
-      range:
-        start: 37
-        end: 38
+      range: 37..38
       str: l
   - token: Assign
     span:
-      range:
-        start: 38
-        end: 39
+      range: 38..39
       str: "="
   - token: Ident
     span:
-      range:
-        start: 39
-        end: 40
+      range: 39..40
       str: e
   - token: Init
     span:
-      range:
-        start: 40
-        end: 42
+      range: 40..42
       str: ":="
   - token: Ident
     span:
-      range:
-        start: 42
-        end: 45
+      range: 42..45
       str: xer
   - token: Ident
     span:
-      range:
-        start: 46
-        end: 52
+      range: 46..52
       str: should
   - token: Ident
     span:
-      range:
-        start: 53
-        end: 59
+      range: 53..59
       str: handle
   - token: Ident
     span:
-      range:
-        start: 60
-        end: 62
+      range: 60..62
       str: it
   - token: Eoi
     span:
-      range:
-        start: 62
-        end: 62
+      range: 62..62
       str: ""
 

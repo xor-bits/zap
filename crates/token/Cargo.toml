@@ -6,6 +6,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# prob faster lexing + less boilerplate:
 # logos = "0.13"
 
 # only for unit tests

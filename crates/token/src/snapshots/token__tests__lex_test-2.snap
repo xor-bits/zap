@@ -6,14 +6,10 @@ expression: "lex(\"_a2\")"
 - Ok: ~
 - - token: Ident
     span:
-      range:
-        start: 0
-        end: 3
+      range: 0..3
       str: _a2
   - token: Eoi
     span:
-      range:
-        start: 3
-        end: 3
+      range: 3..3
       str: ""
 
