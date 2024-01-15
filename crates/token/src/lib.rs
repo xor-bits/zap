@@ -67,6 +67,9 @@ pub enum Token {
     /// `@`
     Extern,
 
+    /// `//`
+    LineComment,
+
     /// integer literal like `0xFFu8`
     LitInt(i128),
 
@@ -93,6 +96,7 @@ impl Token {
             Token::Arrow,
             Token::Type,
             Token::Extern,
+            Token::LineComment,
             Token::LitInt(0),
             Token::LitStr,
             Token::Eoi,
@@ -114,9 +118,10 @@ impl Token {
             Token::Arrow => "->",
             Token::Type => ":",
             Token::Extern => "@",
+            Token::LineComment => "//",
             Token::LitInt(_) => return None,
             Token::LitStr => return None,
-            Token::Eoi => return None,
+            Token::Eoi => "",
         })
     }
 }
@@ -219,18 +224,19 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn starts_with(&self, token: &str) -> Option<Span<'a>> {
-        if !self.at.starts_with(token) {
-            return None;
-        }
-
-        Some(self.span_to(token.len()))
+    fn spanned_token_to(&mut self, token: Token, len: usize) -> SpannedToken<'a> {
+        let span = self.span_to(len);
+        self.advance(&span);
+        SpannedToken { token, span }
     }
 
     fn try_match(&mut self, token: Token) -> Option<SpannedToken<'a>> {
-        let span = self.starts_with(token.as_token_str()?)?;
-        self.advance(&span);
-        Some(SpannedToken { token, span })
+        let str = token.as_token_str()?;
+        if !self.at.starts_with(str) {
+            return None;
+        }
+
+        Some(self.spanned_token_to(token, str.len()))
     }
 
     fn try_match_str(&mut self) -> Option<SpannedToken<'a>> {
@@ -243,12 +249,7 @@ impl<'a> Lexer<'a> {
             return self.eoi();
         };
 
-        let span = self.span_to(term + 2);
-        self.advance(&span);
-        Some(SpannedToken {
-            token: Token::LitStr,
-            span,
-        })
+        Some(self.spanned_token_to(Token::LitStr, term + 2))
     }
 
     fn try_match_ident(&mut self) -> Option<SpannedToken<'a>> {
@@ -263,20 +264,26 @@ impl<'a> Lexer<'a> {
             .map(|term| term + 1)
             .unwrap_or(self.at.len());
 
-        let span = self.span_to(term);
-        self.advance(&span);
-        Some(SpannedToken {
-            token: Token::Ident,
-            span,
-        })
+        Some(self.spanned_token_to(Token::Ident, term))
+    }
+
+    fn try_match_comment(&mut self) -> Option<SpannedToken<'a>> {
+        if !self.at.starts_with("//") {
+            return None;
+        }
+
+        let term = self.at[2..]
+            .lines()
+            .next()
+            .map(|line| line.len() + 2)
+            .unwrap_or(self.at.len());
+
+        Some(self.spanned_token_to(Token::LineComment, term))
     }
 
     fn eoi(&mut self) -> Option<SpannedToken<'a>> {
-        let token = self.eoi.take()?;
-        Some(SpannedToken {
-            token,
-            span: self.span_to(0),
-        })
+        let eoi = self.eoi.take()?;
+        Some(self.spanned_token_to(eoi, 0))
     }
 }
 
@@ -285,9 +292,8 @@ impl<'a> Iterator for Lexer<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.eoi.as_ref()?;
-
         self.at = self.at.trim();
-        println!("at:{}", self.at);
+
         some!(self.try_match(Token::Struct));
         some!(self.try_match(Token::Test));
         some!(self.try_match(Token::Semi));
@@ -303,16 +309,13 @@ impl<'a> Iterator for Lexer<'a> {
 
         some!(self.try_match_str());
         some!(self.try_match_ident());
+        some!(self.try_match_comment());
 
         if !self.at.is_empty() {
             self.err = Err(Error::ExtraTokens);
         }
 
-        let token = self.eoi.take()?;
-        Some(SpannedToken {
-            token,
-            span: self.span_to(0),
-        })
+        self.eoi()
     }
 }
 
@@ -348,5 +351,7 @@ mod tests {
             .collect();
 
         assert_yaml_snapshot!(lex(&all_tokens));
+
+        assert_yaml_snapshot!(lex("// comment\ncode"));
     }
 }

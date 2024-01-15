@@ -2,7 +2,7 @@
 source: crates/token/src/lib.rs
 expression: lex(&all_tokens)
 ---
-- "structtest;:==(){}->:@"
+- "structtest;:==(){}->:@//"
 - Ok: ~
 - - token: Struct
     span:
@@ -76,10 +76,16 @@ expression: lex(&all_tokens)
         start: 21
         end: 22
       str: "@"
-  - token: Eoi
+  - token: LineComment
     span:
       range:
         start: 22
-        end: 22
+        end: 24
+      str: //
+  - token: Eoi
+    span:
+      range:
+        start: 24
+        end: 24
       str: ""
 

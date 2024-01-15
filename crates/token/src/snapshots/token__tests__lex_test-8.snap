@@ -1,0 +1,25 @@
+---
+source: crates/token/src/lib.rs
+expression: "lex(\"// comment\\ncode\")"
+---
+- "// comment\ncode"
+- Ok: ~
+- - token: LineComment
+    span:
+      range:
+        start: 0
+        end: 10
+      str: // comment
+  - token: Ident
+    span:
+      range:
+        start: 11
+        end: 15
+      str: code
+  - token: Eoi
+    span:
+      range:
+        start: 15
+        end: 15
+      str: ""
+
