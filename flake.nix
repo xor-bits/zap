@@ -24,6 +24,7 @@
             cargo-udeps
             cargo-nextest
             cargo-watch
+            cargo-insta
             bacon
             act
 

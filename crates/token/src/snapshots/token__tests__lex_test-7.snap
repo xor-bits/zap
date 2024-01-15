@@ -1,0 +1,85 @@
+---
+source: crates/token/src/lib.rs
+expression: lex(&all_tokens)
+---
+- "structtest;:==(){}->:@"
+- Ok: ~
+- - token: Struct
+    span:
+      range:
+        start: 0
+        end: 6
+      str: struct
+  - token: Test
+    span:
+      range:
+        start: 6
+        end: 10
+      str: test
+  - token: Semi
+    span:
+      range:
+        start: 10
+        end: 11
+      str: ;
+  - token: Init
+    span:
+      range:
+        start: 11
+        end: 13
+      str: ":="
+  - token: Assign
+    span:
+      range:
+        start: 13
+        end: 14
+      str: "="
+  - token: LParen
+    span:
+      range:
+        start: 14
+        end: 15
+      str: (
+  - token: RParen
+    span:
+      range:
+        start: 15
+        end: 16
+      str: )
+  - token: Lbrace
+    span:
+      range:
+        start: 16
+        end: 17
+      str: "{"
+  - token: Rbrace
+    span:
+      range:
+        start: 17
+        end: 18
+      str: "}"
+  - token: Arrow
+    span:
+      range:
+        start: 18
+        end: 20
+      str: "->"
+  - token: Type
+    span:
+      range:
+        start: 20
+        end: 21
+      str: ":"
+  - token: Extern
+    span:
+      range:
+        start: 21
+        end: 22
+      str: "@"
+  - token: Eoi
+    span:
+      range:
+        start: 22
+        end: 22
+      str: ""
+

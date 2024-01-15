@@ -1,0 +1,13 @@
+---
+source: crates/token/src/lib.rs
+expression: tokens
+---
+[
+    SpannedToken {
+        token: LitStr,
+        span: Span {
+            range: 0..3,
+            source: "in->\"vali\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it",
+        },
+    },
+]

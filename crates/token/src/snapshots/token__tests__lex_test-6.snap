@@ -1,0 +1,19 @@
+---
+source: crates/token/src/lib.rs
+expression: "lex(\"\\\"a\\\"\")"
+---
+- "\"a\""
+- Ok: ~
+- - token: LitStr
+    span:
+      range:
+        start: 0
+        end: 3
+      str: "\"a\""
+  - token: Eoi
+    span:
+      range:
+        start: 3
+        end: 3
+      str: ""
+

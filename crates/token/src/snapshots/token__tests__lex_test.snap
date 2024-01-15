@@ -1,0 +1,175 @@
+---
+source: crates/token/src/lib.rs
+expression: "(str, lexer.error(), tokens)"
+---
+- "in->\"vali\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it"
+- Ok: ~
+- - token: Ident
+    span:
+      range:
+        start: 0
+        end: 2
+      str: in
+  - token: Arrow
+    span:
+      range:
+        start: 2
+        end: 4
+      str: "->"
+  - token: LitStr
+    span:
+      range:
+        start: 4
+        end: 10
+      str: "\"vali\""
+  - token: Extern
+    span:
+      range:
+        start: 10
+        end: 11
+      str: "@"
+  - token: Arrow
+    span:
+      range:
+        start: 11
+        end: 13
+      str: "->"
+  - token: Type
+    span:
+      range:
+        start: 13
+        end: 14
+      str: ":"
+  - token: Ident
+    span:
+      range:
+        start: 14
+        end: 15
+      str: d
+  - token: Ident
+    span:
+      range:
+        start: 16
+        end: 20
+      str: synt
+  - token: LParen
+    span:
+      range:
+        start: 20
+        end: 21
+      str: (
+  - token: Ident
+    span:
+      range:
+        start: 21
+        end: 23
+      str: ax
+  - token: Rbrace
+    span:
+      range:
+        start: 23
+        end: 24
+      str: "}"
+  - token: Lbrace
+    span:
+      range:
+        start: 25
+        end: 26
+      str: "{"
+  - token: Ident
+    span:
+      range:
+        start: 26
+        end: 29
+      str: but
+  - token: RParen
+    span:
+      range:
+        start: 29
+        end: 30
+      str: )
+  - token: Ident
+    span:
+      range:
+        start: 31
+        end: 32
+      str: t
+  - token: Semi
+    span:
+      range:
+        start: 32
+        end: 33
+      str: ;
+  - token: Ident
+    span:
+      range:
+        start: 33
+        end: 34
+      str: h
+  - token: Type
+    span:
+      range:
+        start: 34
+        end: 35
+      str: ":"
+  - token: Ident
+    span:
+      range:
+        start: 35
+        end: 36
+      str: e
+  - token: Ident
+    span:
+      range:
+        start: 37
+        end: 38
+      str: l
+  - token: Assign
+    span:
+      range:
+        start: 38
+        end: 39
+      str: "="
+  - token: Ident
+    span:
+      range:
+        start: 39
+        end: 40
+      str: e
+  - token: Init
+    span:
+      range:
+        start: 40
+        end: 42
+      str: ":="
+  - token: Ident
+    span:
+      range:
+        start: 42
+        end: 45
+      str: xer
+  - token: Ident
+    span:
+      range:
+        start: 46
+        end: 52
+      str: should
+  - token: Ident
+    span:
+      range:
+        start: 53
+        end: 59
+      str: handle
+  - token: Ident
+    span:
+      range:
+        start: 60
+        end: 62
+      str: it
+  - token: Eoi
+    span:
+      range:
+        start: 62
+        end: 62
+      str: ""
+

@@ -1,0 +1,13 @@
+---
+source: crates/token/src/lib.rs
+expression: "lex(\"\")"
+---
+- ""
+- Ok: ~
+- - token: Eoi
+    span:
+      range:
+        start: 0
+        end: 0
+      str: ""
+

@@ -1,16 +1,51 @@
-// immutable compile-time static
+// immutable compile-time const
 val := { 4 };
+// or just:
+_val := 4;
 
-main := (i32) -> (i32) {
+// function 'assignment'
+main := () -> i32 {
     print("Hello, world!" + val);
+	return 0;
 };
 
+// automatic `return` without `;`
+mul_2 := (v: i32) -> i32 { v * 2 };
 
-mul_2 := i32 -> i32 {
-	// `$` is the nameless fn argument
-	$ * 2
+// anonymous structs:
+_swap1 := (a: i32, b: i32) -> struct { a: i32, b: i32 } {
+	struct {
+		a: b,
+		b: a,
+	}
+};
+// or tuples:
+_swap2 := (a: i32, b: i32) -> (i32, i32) {
+	(b, a)
 };
 
-sum := (a: i32, b: i32) -> i32 {
+// references
+_swap3 := (a: &i32, b: &i32) {
+	b, a = a, b;
+};
+
+extern := (i32) -> i32 @ __lang_test_extern;
+
+// generics, instanced lazily on first use
+sum := <T> (a: T, b: T) -> T {
 	a + b
 };
+
+// unit tests
+test "unit test" {
+	assert(main() == 0);
+	assert(mul_2(val) == 8);
+
+	a, b := 4, 5;
+	_swap3(&a, &b);
+	assert((a, b) = (5, 4));
+
+	extern(42);
+
+	assert(sum("tests", " worked") == "tests worked");
+}
