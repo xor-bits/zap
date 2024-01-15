@@ -353,5 +353,7 @@ mod tests {
         assert_yaml_snapshot!(lex(&all_tokens));
 
         assert_yaml_snapshot!(lex("// comment\ncode"));
+
+        assert_yaml_snapshot!(lex(include_str!("../../../tests/trivial")));
     }
 }
