@@ -1,0 +1,10 @@
+---
+source: crates/parse/src/lib.rs
+expression: "parse::<ast::Comma>(\",\")"
+---
+- ","
+- Ok:
+    inner: ~
+    eoi: ~
+- Ok: ~
+

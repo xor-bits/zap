@@ -25,6 +25,7 @@
             cargo-nextest
             cargo-watch
             cargo-insta
+            cargo-expand
             bacon
             act
 
