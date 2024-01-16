@@ -3,117 +3,117 @@ source: crates/token/src/lib.rs
 expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it\")"
 ---
 - "in->\"vali\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it"
-- Ok: ~
-- - token: Ident
-    span:
-      range: 0..2
-      str: in
-  - token: Arrow
-    span:
-      range: 2..4
-      str: "->"
-  - token: LitStr
-    span:
-      range: 4..10
-      str: "\"vali\""
-  - token: Extern
-    span:
-      range: 10..11
-      str: "@"
-  - token: Arrow
-    span:
-      range: 11..13
-      str: "->"
-  - token: Type
-    span:
-      range: 13..14
-      str: ":"
-  - token: Ident
-    span:
-      range: 14..15
-      str: d
-  - token: Ident
-    span:
-      range: 16..20
-      str: synt
-  - token: LParen
-    span:
-      range: 20..21
-      str: (
-  - token: Ident
-    span:
-      range: 21..23
-      str: ax
-  - token: Rbrace
-    span:
-      range: 23..24
-      str: "}"
-  - token: Lbrace
-    span:
-      range: 25..26
-      str: "{"
-  - token: Ident
-    span:
-      range: 26..29
-      str: but
-  - token: RParen
-    span:
-      range: 29..30
-      str: )
-  - token: Ident
-    span:
-      range: 31..32
-      str: t
-  - token: Semi
-    span:
-      range: 32..33
-      str: ;
-  - token: Ident
-    span:
-      range: 33..34
-      str: h
-  - token: Type
-    span:
-      range: 34..35
-      str: ":"
-  - token: Ident
-    span:
-      range: 35..36
-      str: e
-  - token: Ident
-    span:
-      range: 37..38
-      str: l
-  - token: Assign
-    span:
-      range: 38..39
-      str: "="
-  - token: Ident
-    span:
-      range: 39..40
-      str: e
-  - token: Init
-    span:
-      range: 40..42
-      str: ":="
-  - token: Ident
-    span:
-      range: 42..45
-      str: xer
-  - token: Ident
-    span:
-      range: 46..52
-      str: should
-  - token: Ident
-    span:
-      range: 53..59
-      str: handle
-  - token: Ident
-    span:
-      range: 60..62
-      str: it
-  - token: Eoi
-    span:
-      range: 62..62
-      str: ""
+- Ok:
+    - token: Ident
+      span:
+        range: 0..2
+        str: in
+    - token: Arrow
+      span:
+        range: 2..4
+        str: "->"
+    - token: LitStr
+      span:
+        range: 4..10
+        str: "\"vali\""
+    - token: Extern
+      span:
+        range: 10..11
+        str: "@"
+    - token: Arrow
+      span:
+        range: 11..13
+        str: "->"
+    - token: Type
+      span:
+        range: 13..14
+        str: ":"
+    - token: Ident
+      span:
+        range: 14..15
+        str: d
+    - token: Ident
+      span:
+        range: 16..20
+        str: synt
+    - token: LParen
+      span:
+        range: 20..21
+        str: (
+    - token: Ident
+      span:
+        range: 21..23
+        str: ax
+    - token: Rbrace
+      span:
+        range: 23..24
+        str: "}"
+    - token: Lbrace
+      span:
+        range: 25..26
+        str: "{"
+    - token: Ident
+      span:
+        range: 26..29
+        str: but
+    - token: RParen
+      span:
+        range: 29..30
+        str: )
+    - token: Ident
+      span:
+        range: 31..32
+        str: t
+    - token: Semi
+      span:
+        range: 32..33
+        str: ;
+    - token: Ident
+      span:
+        range: 33..34
+        str: h
+    - token: Type
+      span:
+        range: 34..35
+        str: ":"
+    - token: Ident
+      span:
+        range: 35..36
+        str: e
+    - token: Ident
+      span:
+        range: 37..38
+        str: l
+    - token: Assign
+      span:
+        range: 38..39
+        str: "="
+    - token: Ident
+      span:
+        range: 39..40
+        str: e
+    - token: Init
+      span:
+        range: 40..42
+        str: ":="
+    - token: Ident
+      span:
+        range: 42..45
+        str: xer
+    - token: Ident
+      span:
+        range: 46..52
+        str: should
+    - token: Ident
+      span:
+        range: 53..59
+        str: handle
+    - token: Ident
+      span:
+        range: 60..62
+        str: it
+    - token: Eoi
+      span:
+        range: 62..62
+        str: ""
 

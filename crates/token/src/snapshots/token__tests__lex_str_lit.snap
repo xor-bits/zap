@@ -1,0 +1,15 @@
+---
+source: crates/token/src/lib.rs
+expression: "lex(\"_a2\")"
+---
+- _a2
+- Ok:
+    - token: Ident
+      span:
+        range: 0..3
+        str: _a2
+    - token: Eoi
+      span:
+        range: 3..3
+        str: ""
+
