@@ -1,13 +1,6 @@
-use std::{
-    any::Any,
-    fmt,
-    iter::{Filter, Peekable, SkipWhile},
-    mem::MaybeUninit,
-    thread,
-    time::Duration,
-};
+use std::{collections::VecDeque, fmt, iter::Filter, mem::MaybeUninit, thread, time::Duration};
 
-use lexer::{Lexer, Span, SpannedToken, Token};
+use lexer::{Lexer, SpannedToken, Token};
 
 //
 
@@ -45,7 +38,7 @@ fn skip_comments(token: &lexer::Result<SpannedToken>) -> bool {
 pub enum ParseStream<'a> {
     Lexer {
         lexer: Filter<Lexer<'a>, fn(&lexer::Result<SpannedToken>) -> bool>,
-        peek: StackVec<SpannedToken<'a>, 2>,
+        peek: VecDeque<SpannedToken<'a>>,
     },
     Buffer {
         buffer: &'a [SpannedToken<'a>],
@@ -62,7 +55,7 @@ impl<'a> ParseStream<'a> {
     pub fn from_lexer(lexer: Lexer<'a>) -> Self {
         Self::Lexer {
             lexer: lexer.filter(skip_comments as _),
-            peek: StackVec::new(),
+            peek: VecDeque::new(),
         }
     }
 
@@ -115,10 +108,10 @@ impl<'a> ParseStream<'a> {
             ParseStream::Lexer { lexer, peek } => {
                 if peek.is_empty() {
                     let next = lexer.next()?.unwrap_or(Self::EOI);
-                    peek.push(next).unwrap();
+                    peek.push_back(next);
                 }
 
-                peek.first()
+                peek.front()
             }
             ParseStream::Buffer { buffer } => buffer.first(),
         }
@@ -129,15 +122,15 @@ impl<'a> ParseStream<'a> {
             ParseStream::Lexer { lexer, peek } => {
                 if peek.len() < 2 {
                     let next = lexer.next()?.unwrap_or(Self::EOI);
-                    peek.push(next).unwrap();
+                    peek.push_back(next);
                 }
 
                 if peek.len() == 1 {
                     let next = lexer.next()?.unwrap_or(Self::EOI);
-                    peek.push(next).unwrap();
+                    peek.push_back(next);
                 }
 
-                peek.as_slice().get(1)
+                peek.get(1)
             }
             ParseStream::Buffer { buffer } => buffer.first(),
         }
@@ -305,120 +298,6 @@ pub fn unexpected(token: SpannedToken, arr: &[Token], dots: bool) -> Error {
     }
 
     Error::UnexpectedToken(output)
-}
-
-#[derive(Debug)]
-pub struct StackVec<T, const CAP: usize> {
-    arr: [MaybeUninit<T>; CAP],
-    len: u8,
-}
-
-// impl<T: Clone, const CAP: usize> Clone for StackVec<T, CAP> {
-//     fn clone(&self) -> Self {
-//         todo!()
-//     }
-// }
-
-impl<T, const CAP: usize> StackVec<T, CAP> {
-    pub const fn new() -> Self {
-        // SAFETY: all 'fields' (elements) are still MaybeUninit, so this is safe
-        let arr: [MaybeUninit<T>; CAP] = unsafe { MaybeUninit::uninit().assume_init() };
-        Self { arr, len: 0 }
-    }
-
-    pub fn push(&mut self, val: T) -> Result<(), T> {
-        if self.len == u8::MAX {
-            return Err(val);
-        }
-
-        let Some(slot) = self.arr.get_mut(self.len as usize) else {
-            return Err(val);
-        };
-
-        slot.write(val);
-        self.len += 1;
-
-        Ok(())
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        self.len = self.len.checked_sub(1)?;
-        let slot = &mut self.arr[self.len as usize];
-
-        Some(unsafe { slot.assume_init_read() })
-    }
-
-    pub fn remove(&mut self, n: usize) -> Option<T> {
-        // TODO: ring
-        if n >= self.len as usize {
-            return None;
-        }
-
-        // take the value from middle
-        let value = unsafe { self.arr[n].assume_init_read() };
-
-        // and fix the array
-        self.arr[n..].rotate_left(1);
-        self.len -= 1;
-
-        Some(value)
-    }
-
-    pub fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn first(&self) -> Option<&T> {
-        if self.len == 0 {
-            return None;
-        }
-
-        Some(unsafe { self.arr.first()?.assume_init_ref() })
-    }
-
-    pub fn first_mut(&mut self) -> Option<&mut T> {
-        if self.len == 0 {
-            return None;
-        }
-
-        Some(unsafe { self.arr.first_mut()?.assume_init_mut() })
-    }
-
-    pub fn last(&self) -> Option<&T> {
-        if self.len == 0 {
-            return None;
-        }
-
-        Some(unsafe { self.arr.get(self.len as usize - 1)?.assume_init_ref() })
-    }
-
-    pub fn last_mut(&mut self) -> Option<&mut T> {
-        if self.len == 0 {
-            return None;
-        }
-
-        Some(unsafe { self.arr.get_mut(self.len as usize - 1)?.assume_init_mut() })
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        let slice = &self.arr[..self.len as usize];
-
-        // TODO: MaybeUninit::slice_assume_init_ref is unstable
-        let init_slice_ptr = slice as *const [MaybeUninit<T>] as *const [T];
-        unsafe { &*init_slice_ptr }
-    }
-
-    pub fn as_slice_mut(&mut self) -> &mut [T] {
-        let slice = &mut self.arr[..self.len as usize];
-
-        // TODO: MaybeUninit::slice_assume_init_mut is unstable
-        let init_slice_ptr = slice as *mut [MaybeUninit<T>] as *mut [T];
-        unsafe { &mut *init_slice_ptr }
-    }
 }
 
 //
