@@ -1,5 +1,5 @@
 ---
-source: crates/token/src/lib.rs
+source: crates/lexer/src/lib.rs
 expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it\")"
 ---
 - "in->\"vali\"@->:d synt(ax} {but) t;h:e l=e:=xer should handle it"
@@ -8,7 +8,7 @@ expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should ha
       span:
         range: 0..2
         str: in
-    - token: Arrow
+    - token: RArrow
       span:
         range: 2..4
         str: "->"
@@ -16,15 +16,15 @@ expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should ha
       span:
         range: 4..10
         str: "\"vali\""
-    - token: Extern
+    - token: At
       span:
         range: 10..11
         str: "@"
-    - token: Arrow
+    - token: RArrow
       span:
         range: 11..13
         str: "->"
-    - token: Type
+    - token: Colon
       span:
         range: 13..14
         str: ":"
@@ -44,11 +44,11 @@ expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should ha
       span:
         range: 21..23
         str: ax
-    - token: Rbrace
+    - token: RBrace
       span:
         range: 23..24
         str: "}"
-    - token: Lbrace
+    - token: LBrace
       span:
         range: 25..26
         str: "{"
@@ -72,7 +72,7 @@ expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should ha
       span:
         range: 33..34
         str: h
-    - token: Type
+    - token: Colon
       span:
         range: 34..35
         str: ":"
@@ -92,7 +92,7 @@ expression: "lex(\"in->\\\"vali\\\"@->:d synt(ax} {but) t;h:e l=e:=xer should ha
       span:
         range: 39..40
         str: e
-    - token: Init
+    - token: Walrus
       span:
         range: 40..42
         str: ":="

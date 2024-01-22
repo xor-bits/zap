@@ -4,7 +4,16 @@ use parser::{ast, Parse, ParseStream};
 //
 
 fn main() {
-    let str = r#"const := { 4 };"#;
+    let str = r#"
+        const := {
+            tmp := 4;
+            tmp
+        };
+
+        // main := () -> i32 {
+        //     return 0;
+        // };
+    "#;
     println!("{str}");
 
     let mut stream = ParseStream::from_lexer(Lexer::new(str));

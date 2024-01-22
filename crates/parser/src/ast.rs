@@ -30,7 +30,7 @@ impl Parse for Root {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let mut inner = Vec::new();
         loop {
-            let mut look = tokens.look();
+            let mut look = tokens.look1();
             if look.peek(Token::Semi) {
                 _ = tokens.next();
             } else if look.peek(Token::Eoi) {
@@ -54,7 +54,7 @@ pub enum RootItem {
 
 impl Parse for RootItem {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        let mut look = tokens.look();
+        let mut look = tokens.look1();
         if look.peek(Token::Ident) {
             Ok(Self::Init(tokens.parse()?))
         } else if look.peek(Token::Test) {
@@ -113,7 +113,7 @@ impl<T: Parse> Parse for CommaSeparated<T> {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let first = tokens.parse()?;
         let mut inner = Vec::new();
-        while tokens.peek(Token::Comma) {
+        while tokens.peek1(Token::Comma) {
             _ = tokens.next();
             inner.push(CommaSeparatedItem {
                 comma: Comma,
@@ -157,7 +157,7 @@ impl Parse for Block {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let open = tokens.parse()?;
         let mut stmts = Vec::new();
-        while !tokens.peek(Token::RBrace) {
+        while !tokens.peek1(Token::RBrace) {
             stmts.push(tokens.parse()?);
         }
         let close = tokens.parse()?;
@@ -177,7 +177,15 @@ pub enum Stmt {
 
 impl Parse for Stmt {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        Ok(Self::Init(tokens.parse()?))
+        match (
+            tokens.top1().map(|t| t.token()),
+            tokens.top2().map(|t| t.token()),
+        ) {
+            (Some(Token::Ident), Some(Token::Walrus | Token::Assign | Token::Comma)) => {
+                Ok(Self::Init(tokens.parse()?))
+            }
+            _ => Ok(Self::Expr(tokens.parse()?)),
+        }
     }
 }
 
@@ -190,6 +198,8 @@ pub enum Expr {
     LitInt(LitInt),
     Load(Ident),
 
+    Func(CommaSeparated<Ident>),
+
     Add(Box<(Expr, Expr)>),
     Sub(Box<(Expr, Expr)>),
     Mul(Box<(Expr, Expr)>),
@@ -201,8 +211,8 @@ impl Expr {
         println!("parse_math_expr");
         let mut lhs: Self = Self::parse_math_term(tokens)?;
 
-        while tokens.peek(Token::Plus) | tokens.peek(Token::Minus) {
-            let is_add = tokens.peek(Token::Plus);
+        while tokens.peek1(Token::Plus) | tokens.peek1(Token::Minus) {
+            let is_add = tokens.peek1(Token::Plus);
 
             let expr = Box::new((lhs, Self::parse_math_term(tokens)?));
             if is_add {
@@ -219,8 +229,8 @@ impl Expr {
         println!("parse_math_term");
         let mut lhs: Self = Self::parse_math_atom(tokens)?;
 
-        while tokens.peek(Token::Asterisk) | tokens.peek(Token::Slash) {
-            let is_mul = tokens.peek(Token::Asterisk);
+        while tokens.peek1(Token::Asterisk) | tokens.peek1(Token::Slash) {
+            let is_mul = tokens.peek1(Token::Asterisk);
 
             let expr = Box::new((lhs, Self::parse_math_atom(tokens)?));
             if is_mul {
@@ -235,7 +245,7 @@ impl Expr {
 
     fn parse_math_atom(tokens: &mut ParseStream) -> Result<Self> {
         println!("parse_math_atom");
-        let mut look = tokens.look();
+        let mut look = tokens.look1();
         if look.peek(Token::LBrace) {
             Ok(Self::Block(tokens.parse()?))
         } else if look.peek(Token::LitInt) {
@@ -252,6 +262,24 @@ impl Parse for Expr {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         Self::parse_math_expr(tokens)
     }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Func {
+    args: CommaSeparated<Argument>,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Argument {
+    pub id: Ident,
+    pub colon: token::Colon,
+    pub ty: Ident,
 }
 
 //

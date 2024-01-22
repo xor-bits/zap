@@ -229,14 +229,14 @@ impl fmt::Display for Token {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpannedToken<'a> {
     token: Token,
     span: Span<'a>,
 }
 
 impl<'a> SpannedToken<'a> {
-    pub fn from_whole_str(token: Token, str: &'a str) -> Self {
+    pub const fn from_whole_str(token: Token, str: &'a str) -> Self {
         Self {
             token,
             span: Span::from_whole_str(str),
@@ -268,22 +268,24 @@ impl fmt::Display for SpannedToken<'_> {
 
 //
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span<'a> {
-    range: Range<usize>,
+    from: usize,
+    to: usize,
     source: &'a str,
 }
 
 impl<'a> Span<'a> {
-    pub fn from_whole_str(str: &'a str) -> Self {
+    pub const fn from_whole_str(str: &'a str) -> Self {
         Self {
-            range: 0..str.len(),
+            from: 0,
+            to: str.len(),
             source: str,
         }
     }
 
     pub fn span(&self) -> Range<usize> {
-        self.range.clone()
+        self.from..self.to
     }
 
     pub fn as_str(&self) -> &'a str {
@@ -337,13 +339,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self, span: &Span) {
-        self.advance_by(span.range.len())
+        self.advance_by(span.span().len())
     }
 
     fn span_to(&self, len: usize) -> Span<'a> {
         let at = self.src_index();
         Span {
-            range: at..at + len,
+            from: at,
+            to: at + len,
             source: self.source,
         }
     }

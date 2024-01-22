@@ -1,8 +1,8 @@
 ---
-source: crates/token/src/lib.rs
+source: crates/lexer/src/lib.rs
 expression: lex(&all_tokens)
 ---
-- ";=(){}+-*/:,@&<><=>=:=->structtest"
+- ";=(){}+-*/:,@&<><=>===!=:=->structtest"
 - Ok:
     - token: Semi
       span:
@@ -20,11 +20,11 @@ expression: lex(&all_tokens)
       span:
         range: 3..4
         str: )
-    - token: Lbrace
+    - token: LBrace
       span:
         range: 4..5
         str: "{"
-    - token: Rbrace
+    - token: RBrace
       span:
         range: 5..6
         str: "}"
@@ -44,7 +44,7 @@ expression: lex(&all_tokens)
       span:
         range: 9..10
         str: /
-    - token: Type
+    - token: Colon
       span:
         range: 10..11
         str: ":"
@@ -52,7 +52,7 @@ expression: lex(&all_tokens)
       span:
         range: 11..12
         str: ","
-    - token: Extern
+    - token: At
       span:
         range: 12..13
         str: "@"
@@ -76,24 +76,32 @@ expression: lex(&all_tokens)
       span:
         range: 18..20
         str: ">="
-    - token: Init
+    - token: Eq
       span:
         range: 20..22
-        str: ":="
-    - token: Arrow
+        str: "=="
+    - token: Neq
       span:
         range: 22..24
+        str: "!="
+    - token: Walrus
+      span:
+        range: 24..26
+        str: ":="
+    - token: RArrow
+      span:
+        range: 26..28
         str: "->"
     - token: Struct
       span:
-        range: 24..30
+        range: 28..34
         str: struct
     - token: Test
       span:
-        range: 30..34
+        range: 34..38
         str: test
     - token: Eoi
       span:
-        range: 34..34
+        range: 38..38
         str: ""
 
