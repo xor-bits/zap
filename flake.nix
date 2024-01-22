@@ -20,7 +20,8 @@
         devShells.default = pkgs.mkShell rec {
           buildInputs = with pkgs; [
             pkg-config
-            rust-bin.nightly.latest.default
+            # rust-bin.nightly.latest.default
+            rustup
             cargo-udeps
             cargo-nextest
             cargo-watch
@@ -35,6 +36,7 @@
             libffi
             libxml2
             llvmPackages_16.llvm
+            llvmPackages_16.bintools
           ];
 
           shellHook = ''

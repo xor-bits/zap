@@ -7,3 +7,5 @@ edition.workspace = true
 
 [dependencies]
 compiler.path = "../compiler"
+lexer.path = "../lexer"
+parser.path = "../parser"

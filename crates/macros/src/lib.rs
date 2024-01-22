@@ -24,12 +24,12 @@ fn try_derive_single_token(input: syn::DeriveInput) -> syn::Result<TokenStream> 
     for s in input.attrs {
         let list = match s.meta {
             Meta::List(list) => list,
-            _ => return err(s.meta.span(), "expected a Meta::List"),
+            _ => continue,
         };
 
         let attr = list.path.segments.last().unwrap();
         if attr.ident != "token" {
-            return err(attr.span(), "invalid attr");
+            continue;
         }
 
         if target_token.is_some() {

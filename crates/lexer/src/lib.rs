@@ -66,10 +66,10 @@ pub enum Token {
     RParen,
 
     /// `{`
-    Lbrace,
+    LBrace,
 
     /// `}`
-    Rbrace,
+    RBrace,
 
     /// `+`
     Plus,
@@ -84,13 +84,13 @@ pub enum Token {
     Slash,
 
     /// `:`
-    Type,
+    Colon,
 
     /// `,`
     Comma,
 
     /// `@`
-    Extern,
+    At,
 
     /// `&`
     Ampersand,
@@ -107,11 +107,17 @@ pub enum Token {
     /// `>=`
     Ge,
 
+    /// `==`
+    Eq,
+
+    /// `!=`
+    Neq,
+
     /// `:=`
-    Init,
+    Walrus,
 
     /// `->`
-    Arrow,
+    RArrow,
 
     /// `struct`
     Struct,
@@ -125,8 +131,11 @@ pub enum Token {
     /// identifiers like `_fn_name`
     Ident,
 
+    /// floating point literal like `5.2`
+    LitFloat,
+
     /// integer literal like `0xFFu8`
-    LitInt(i128),
+    LitInt,
 
     /// string literal like `"test"`
     LitStr,
@@ -142,27 +151,30 @@ impl Token {
             Token::Assign,
             Token::LParen,
             Token::RParen,
-            Token::Lbrace,
-            Token::Rbrace,
+            Token::LBrace,
+            Token::RBrace,
             Token::Plus,
             Token::Minus,
             Token::Asterisk,
             Token::Slash,
-            Token::Type,
+            Token::Colon,
             Token::Comma,
-            Token::Extern,
+            Token::At,
             Token::Ampersand,
             Token::Lt,
             Token::Gt,
             Token::Le,
             Token::Ge,
-            Token::Init,
-            Token::Arrow,
+            Token::Eq,
+            Token::Neq,
+            Token::Walrus,
+            Token::RArrow,
             Token::Struct,
             Token::Test,
             Token::LineComment,
             Token::Ident,
-            Token::LitInt { 0: 0 },
+            Token::LitFloat,
+            Token::LitInt,
             Token::LitStr,
             Token::Eoi,
         ]
@@ -174,30 +186,43 @@ impl Token {
             Token::Assign => "=",
             Token::LParen => "(",
             Token::RParen => ")",
-            Token::Lbrace => "{",
-            Token::Rbrace => "}",
+            Token::LBrace => "{",
+            Token::RBrace => "}",
             Token::Plus => "+",
             Token::Minus => "-",
             Token::Asterisk => "*",
             Token::Slash => "/",
-            Token::Type => ":",
+            Token::Colon => ":",
             Token::Comma => ",",
-            Token::Extern => "@",
+            Token::At => "@",
             Token::Ampersand => "&",
             Token::Lt => "<",
             Token::Gt => ">",
             Token::Le => "<=",
             Token::Ge => ">=",
-            Token::Init => ":=",
-            Token::Arrow => "->",
-            Token::Struct {} => "struct",
+            Token::Eq => "==",
+            Token::Neq => "!=",
+            Token::Walrus => ":=",
+            Token::RArrow => "->",
+            Token::Struct => "struct",
             Token::Test => "test",
-            Token::LineComment { .. } => return None,
+            Token::LineComment => return None,
             Token::Ident => return None,
-            Token::LitInt { .. } => return None,
+            Token::LitFloat => return None,
+            Token::LitInt => return None,
             Token::LitStr => return None,
             Token::Eoi => return None,
         })
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(s) = self.as_token_str() {
+            f.write_str(s)
+        } else {
+            write!(f, "{self:?}")
+        }
     }
 }
 
@@ -226,8 +251,18 @@ impl<'a> SpannedToken<'a> {
         self.span.span()
     }
 
-    pub fn str(&self) -> &'a str {
-        self.span.str()
+    pub fn as_str(&self) -> &'a str {
+        self.span.as_str()
+    }
+}
+
+impl fmt::Display for SpannedToken<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.token == Token::Eoi {
+            write!(f, "<eoi>")
+        } else {
+            f.write_str(self.as_str())
+        }
     }
 }
 
@@ -251,7 +286,7 @@ impl<'a> Span<'a> {
         self.range.clone()
     }
 
-    pub fn str(&self) -> &'a str {
+    pub fn as_str(&self) -> &'a str {
         &self.source[self.span()]
     }
 }
@@ -264,7 +299,7 @@ impl Serialize for Span<'_> {
     {
         let mut s = serializer.serialize_struct("SpannedToken", 3)?;
         s.serialize_field("range", &format!("{:?}", self.span()))?;
-        s.serialize_field("str", &self.str())?;
+        s.serialize_field("str", &self.as_str())?;
         s.end()
     }
 }
@@ -352,10 +387,11 @@ impl<'a> Lexer<'a> {
             .unwrap_or(self.at.len());
 
         let token = if dot_found {
-            todo!("LitFloat {}", &self.at[..term])
+            Token::LitFloat
         } else {
-            let num = self.at[..term].parse::<i128>().unwrap(); // the unwrap should never fail
-            Token::LitInt(num)
+            Token::LitInt
+            // let num = self.at[..term].parse::<i128>().unwrap(); // the unwrap should never fail
+            // Token::LitInt(num)
         };
 
         self.spanned_token_to(token, term)

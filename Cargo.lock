@@ -3,10 +3,6 @@
 version = 3
 
 [[package]]
-name = "ast"
-version = "0.1.0"
-
-[[package]]
 name = "codegen"
 version = "0.1.0"
 
@@ -14,9 +10,8 @@ version = "0.1.0"
 name = "compiler"
 version = "0.1.0"
 dependencies = [
- "ast",
  "codegen",
- "parse",
+ "parser",
 ]
 
 [[package]]
@@ -58,6 +53,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "lexer"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "serde",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.152"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,14 +82,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "parse"
+name = "parser"
 version = "0.1.0"
 dependencies = [
- "ast",
  "insta",
+ "lexer",
  "macros",
  "serde",
- "token",
 ]
 
 [[package]]
@@ -112,6 +114,8 @@ name = "repl"
 version = "0.1.0"
 dependencies = [
  "compiler",
+ "lexer",
+ "parser",
 ]
 
 [[package]]
@@ -149,14 +153,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "token"
-version = "0.1.0"
-dependencies = [
- "insta",
- "serde",
 ]
 
 [[package]]

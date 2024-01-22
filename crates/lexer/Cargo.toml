@@ -1,5 +1,5 @@
 [package]
-name = "token"
+name = "lexer"
 version.workspace = true
 edition.workspace = true
 
