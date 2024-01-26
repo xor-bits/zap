@@ -143,7 +143,7 @@ impl<'a> ParseStream<'a> {
             self.top1().copied().unwrap_or(Self::EOI),
             self.top2().copied().unwrap_or(Self::EOI),
         );
-        thread::sleep(Duration::from_millis(10));
+
         let res = T::parse(self);
 
         println!(

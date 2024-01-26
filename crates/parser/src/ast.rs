@@ -1,4 +1,6 @@
-use crate::{unexpected, Parse, ParseStream, Result, SingleToken, Token};
+use std::iter;
+
+use crate::{Parse, ParseStream, Result, Token};
 use macros::Parse;
 
 use token::*;
@@ -70,18 +72,10 @@ impl Parse for RootItem {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct Init {
-    pub targets: Targets,
+    pub targets: CommaSeparated<Target>,
     pub walrus: Walrus,
-    pub expr: Expr,
+    pub exprs: CommaSeparated<Expr>,
     pub semi: Semi,
-}
-
-//
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Parse)]
-pub struct Targets {
-    pub inner: CommaSeparated<Target>,
 }
 
 //
@@ -121,6 +115,42 @@ impl<T: Parse> Parse for CommaSeparated<T> {
             });
         }
         Ok(Self { first, inner })
+    }
+}
+
+impl<T> CommaSeparated<T> {
+    pub fn iter(&self) -> CommaSeparatedIter<T> {
+        CommaSeparatedIter {
+            first: Some(&self.first),
+            inner: &self.inner[..],
+        }
+    }
+}
+
+//
+
+pub struct CommaSeparatedIter<'a, T> {
+    first: Option<&'a T>,
+    inner: &'a [CommaSeparatedItem<T>],
+}
+
+impl<'a, T> Iterator for CommaSeparatedIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(first) = self.first.take() {
+            return Some(first);
+        }
+
+        let (first, inner) = self.inner.split_first()?;
+        self.inner = inner;
+        Some(&first.item)
+    }
+}
+
+impl<'a, T> ExactSizeIterator for CommaSeparatedIter<'a, T> {
+    fn len(&self) -> usize {
+        self.inner.len() + if self.first.is_some() { 1 } else { 0 }
     }
 }
 
@@ -172,7 +202,8 @@ impl Parse for Block {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
     Init(Init),
-    Expr(Expr),
+    Expr(StmtExpr),
+    Return(Return),
 }
 
 impl Parse for Stmt {
@@ -184,9 +215,29 @@ impl Parse for Stmt {
             (Some(Token::Ident), Some(Token::Walrus | Token::Assign | Token::Comma)) => {
                 Ok(Self::Init(tokens.parse()?))
             }
+            (Some(Token::Return), _) => Ok(Self::Return(tokens.parse()?)),
             _ => Ok(Self::Expr(tokens.parse()?)),
         }
     }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct Return {
+    pub return_kw: token::Return,
+    pub expr: Expr,
+    pub semi: Semi,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct StmtExpr {
+    pub expr: Expr,
+    pub semi: Semi,
 }
 
 //
@@ -196,14 +247,16 @@ impl Parse for Stmt {
 pub enum Expr {
     Block(Box<Block>),
     LitInt(LitInt),
+    LitStr(LitStr),
     Load(Ident),
 
-    Func(CommaSeparated<Ident>),
+    Func(Func),
 
     Add(Box<(Expr, Expr)>),
     Sub(Box<(Expr, Expr)>),
     Mul(Box<(Expr, Expr)>),
     Div(Box<(Expr, Expr)>),
+    Call(Box<Call>),
 }
 
 impl Expr {
@@ -227,9 +280,47 @@ impl Expr {
 
     fn parse_math_term(tokens: &mut ParseStream) -> Result<Self> {
         println!("parse_math_term");
-        let mut lhs: Self = Self::parse_math_atom(tokens)?;
+        let mut lhs: Self = Self::parse_math_call(tokens)?;
 
         while tokens.peek1(Token::Asterisk) | tokens.peek1(Token::Slash) {
+            let is_mul = tokens.peek1(Token::Asterisk);
+
+            let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
+            if is_mul {
+                lhs = Self::Add(expr);
+            } else {
+                lhs = Self::Sub(expr);
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_math_call(tokens: &mut ParseStream) -> Result<Self> {
+        println!("parse_math_call");
+        let mut lhs: Self = Self::parse_math_atom(tokens)?;
+
+        while tokens.peek1(Token::LParen) {
+            let func = lhs;
+            let args_beg: token::LParen = tokens.parse()?;
+
+            let args = if !tokens.peek1(Token::RParen) {
+                Some(tokens.parse()?)
+            } else {
+                None
+            };
+
+            let args_end: token::RParen = tokens.parse()?;
+
+            lhs = Self::Call(Box::new(Call {
+                func,
+                args_beg,
+                args,
+                args_end,
+            }))
+        }
+
+        while tokens.peek1(Token::LParen) {
             let is_mul = tokens.peek1(Token::Asterisk);
 
             let expr = Box::new((lhs, Self::parse_math_atom(tokens)?));
@@ -250,10 +341,16 @@ impl Expr {
             Ok(Self::Block(tokens.parse()?))
         } else if look.peek(Token::LitInt) {
             Ok(Self::LitInt(tokens.parse()?))
+        } else if look.peek(Token::LitStr) {
+            Ok(Self::LitStr(tokens.parse()?))
         } else if look.peek(Token::Ident) {
-            println!("top = Ident");
             Ok(Self::Load(tokens.parse()?))
         } else if look.peek(Token::LParen) {
+            let _: token::LParen = tokens.parse()?;
+            let expr = tokens.parse()?;
+            let _: token::RParen = tokens.parse()?;
+            Ok(expr)
+        } else if look.peek(Token::Fn) {
             Ok(Self::Func(tokens.parse()?))
         } else {
             Err(look.err())
@@ -270,13 +367,63 @@ impl Parse for Expr {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Call {
+    pub func: Expr,
+    pub args_beg: token::LParen,
+    pub args: Option<CommaSeparated<Expr>>,
+    pub args_end: token::RParen,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
-    _args_beg: token::LParen,
-    args: CommaSeparated<Argument>,
-    _args_end: token::RParen,
-    arrow: token::RArrow,
-    block: Block,
+    pub fn_kw: token::Fn,
+    pub args_beg: token::LParen,
+    pub args: Option<CommaSeparated<Argument>>,
+    pub args_end: token::RParen,
+    pub return_ty: Option<(token::RArrow, Ident)>,
+    pub block: Block,
+}
+
+impl Parse for Func {
+    fn parse(tokens: &mut ParseStream) -> Result<Self> {
+        let fn_kw = tokens.parse()?;
+        let _args_beg = tokens.parse()?;
+
+        let mut look = tokens.look1();
+        let args = if look.peek(Token::Ident) {
+            Some(tokens.parse()?)
+        } else if look.peek(Token::RParen) {
+            None
+        } else {
+            return Err(look.err());
+        };
+
+        let _args_end = tokens.parse()?;
+
+        let mut look = tokens.look1();
+        let return_ty = if look.peek(Token::RArrow) {
+            Some((tokens.parse()?, tokens.parse()?))
+        } else if look.peek(Token::RBrace) {
+            None
+        } else {
+            return Err(look.err());
+        };
+
+        let block = tokens.parse()?;
+
+        Ok(Func {
+            fn_kw,
+            args_beg: _args_beg,
+            args,
+            args_end: _args_end,
+            return_ty,
+            block,
+        })
+    }
 }
 
 //

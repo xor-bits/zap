@@ -1,3 +1,4 @@
+use interpreter::Runner;
 use lexer::Lexer;
 use parser::{ast, Parse, ParseStream};
 
@@ -5,12 +6,10 @@ use parser::{ast, Parse, ParseStream};
 
 fn main() {
     let str = r#"
-        const := {
-            tmp := 4;
-            tmp
-        };
+        const := 4;
 
-        main := () -> i32 {
+        main := fn() -> i32 {
+            print("Hello world ", const);
             return 0;
         };
     "#;
@@ -26,4 +25,12 @@ fn main() {
         .map_err(|err| err.to_string());
 
     println!("{ast:?} {extra:?}");
+
+    if let Ok(ast) = ast {
+        let mut runner = Runner::new();
+        runner.add_defaults();
+
+        let eval = runner.exec(&ast);
+        println!("{eval:?}");
+    }
 }

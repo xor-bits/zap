@@ -119,6 +119,12 @@ pub enum Token {
     /// `->`
     RArrow,
 
+    /// `fn`
+    Fn,
+
+    /// `return`
+    Return,
+
     /// `struct`
     Struct,
 
@@ -169,6 +175,8 @@ impl Token {
             Token::Neq,
             Token::Walrus,
             Token::RArrow,
+            Token::Fn,
+            Token::Return,
             Token::Struct,
             Token::Test,
             Token::LineComment,
@@ -204,6 +212,8 @@ impl Token {
             Token::Neq => "!=",
             Token::Walrus => ":=",
             Token::RArrow => "->",
+            Token::Fn => "fn",
+            Token::Return => "return",
             Token::Struct => "struct",
             Token::Test => "test",
             Token::LineComment => return None,
