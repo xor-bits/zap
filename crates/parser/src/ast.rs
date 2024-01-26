@@ -251,7 +251,10 @@ impl Expr {
         } else if look.peek(Token::LitInt) {
             Ok(Self::LitInt(tokens.parse()?))
         } else if look.peek(Token::Ident) {
+            println!("top = Ident");
             Ok(Self::Load(tokens.parse()?))
+        } else if look.peek(Token::LParen) {
+            Ok(Self::Func(tokens.parse()?))
         } else {
             Err(look.err())
         }
@@ -267,15 +270,19 @@ impl Parse for Expr {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct Func {
+    _args_beg: token::LParen,
     args: CommaSeparated<Argument>,
+    _args_end: token::RParen,
+    arrow: token::RArrow,
+    block: Block,
 }
 
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct Argument {
     pub id: Ident,
     pub colon: token::Colon,
