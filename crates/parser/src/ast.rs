@@ -1,6 +1,6 @@
 use std::iter;
 
-use crate::{Parse, ParseStream, Result, Token};
+use crate::{unexpected, Parse, ParseStream, Result, Token};
 use macros::Parse;
 
 use token::*;
@@ -21,6 +21,8 @@ pub struct Ast<T> {
     pub inner: T,
     pub eoi: Eoi,
 }
+
+//
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +48,8 @@ impl Parse for Root {
         Ok(Self { inner })
     }
 }
+
+//
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +79,6 @@ pub struct Init {
     pub targets: CommaSeparated<Target>,
     pub walrus: Walrus,
     pub exprs: CommaSeparated<Expr>,
-    pub semi: Semi,
 }
 
 //
@@ -189,6 +192,28 @@ impl Parse for Block {
         let mut stmts = Vec::new();
         while !tokens.peek1(Token::RBrace) {
             stmts.push(tokens.parse()?);
+
+            let mut has_semi = false;
+            while tokens.peek1(Token::Semi) {
+                // skip all semicolons
+                has_semi = true;
+                _ = tokens.next_token()?;
+            }
+
+            if !has_semi {
+                // no semi == it is the last statement and an implicit return
+
+                let r_brace = tokens.next_token()?;
+                if r_brace.token() != Token::RBrace {
+                    return Err(unexpected(r_brace, &[Token::Semi, Token::RBrace], false));
+                }
+
+                return Ok(Self {
+                    open,
+                    stmts,
+                    close: RBrace,
+                });
+            }
         }
         let close = tokens.parse()?;
 
@@ -228,7 +253,6 @@ impl Parse for Stmt {
 pub struct Return {
     pub return_kw: token::Return,
     pub expr: Expr,
-    pub semi: Semi,
 }
 
 //
@@ -237,7 +261,6 @@ pub struct Return {
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct StmtExpr {
     pub expr: Expr,
-    pub semi: Semi,
 }
 
 //
@@ -265,7 +288,7 @@ impl Expr {
         let mut lhs: Self = Self::parse_math_term(tokens)?;
 
         while tokens.peek1(Token::Plus) | tokens.peek1(Token::Minus) {
-            let is_add = tokens.peek1(Token::Plus);
+            let is_add = tokens.next_token()?.token() == Token::Plus;
 
             let expr = Box::new((lhs, Self::parse_math_term(tokens)?));
             if is_add {
@@ -283,7 +306,7 @@ impl Expr {
         let mut lhs: Self = Self::parse_math_call(tokens)?;
 
         while tokens.peek1(Token::Asterisk) | tokens.peek1(Token::Slash) {
-            let is_mul = tokens.peek1(Token::Asterisk);
+            let is_mul = tokens.next_token()?.token() == Token::Asterisk;
 
             let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
             if is_mul {

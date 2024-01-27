@@ -91,11 +91,7 @@ impl<'a> ParseStream<'a> {
     }
 
     pub fn expect_next(&mut self, token: Token) -> Result<SpannedToken<'a>> {
-        let tok = self
-            .next()
-            .transpose()?
-            .unwrap_or_else(|| SpannedToken::from_whole_str(Token::Eoi, ""));
-
+        let tok = self.next_token()?;
         if tok.token() == token {
             Ok(tok)
         } else {
