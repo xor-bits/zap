@@ -6,7 +6,7 @@ use parser::{ast, Parse, ParseStream};
 
 fn main() {
     let str = r#"
-        const := 4;
+        const := { 1 + 1 };
 
         add := fn(a: i32, b: i32) -> i32 {
             a + b

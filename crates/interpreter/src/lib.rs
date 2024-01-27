@@ -345,7 +345,7 @@ impl Execute for ast::Init {
 impl Execute for ast::Expr {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
         match self {
-            ast::Expr::Block(_) => todo!(),
+            ast::Expr::Block(block) => block.exec(vars),
             ast::Expr::LitInt(lit) => Ok(Value::Int(lit.value)),
             ast::Expr::LitStr(lit) => Ok(Value::Str(lit.value.as_str().into())),
             ast::Expr::Load(load) => vars.load(&load.value).ok_or(Error::VarNotFound),
@@ -404,6 +404,8 @@ impl Execute for ast::Block {
             println!("auto return {last}");
             return Ok(last);
         }
+
+        // TODO: drop variables declared in this block
 
         Ok(Value::None)
     }
