@@ -355,7 +355,7 @@ impl Execute for ast::Expr {
                 let rhs = add.1.exec(vars)?;
 
                 match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.wrapping_add(rhs))),
                     (Value::Str(lhs), Value::Int(rhs)) => {
                         Ok(Value::Str(format!("{lhs}{rhs}").into()))
                     }
@@ -363,13 +363,43 @@ impl Execute for ast::Expr {
                         Ok(Value::Str(format!("{lhs}{rhs}").into()))
                     }
                     (lhs, rhs) => {
-                        todo!("eval {lhs}+{rhs}");
+                        todo!("eval {lhs}+{rhs}")
                     }
                 }
             }
-            ast::Expr::Sub(_) => todo!(),
-            ast::Expr::Mul(_) => todo!(),
-            ast::Expr::Div(_) => todo!(),
+            ast::Expr::Sub(sub) => {
+                let lhs = sub.0.exec(vars)?;
+                let rhs = sub.1.exec(vars)?;
+
+                match (lhs, rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.wrapping_sub(rhs))),
+                    (lhs, rhs) => {
+                        todo!("eval {lhs}+{rhs}")
+                    }
+                }
+            }
+            ast::Expr::Mul(mul) => {
+                let lhs = mul.0.exec(vars)?;
+                let rhs = mul.1.exec(vars)?;
+
+                match (lhs, rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.wrapping_mul(rhs))),
+                    (lhs, rhs) => {
+                        todo!("eval {lhs}+{rhs}")
+                    }
+                }
+            }
+            ast::Expr::Div(div) => {
+                let lhs = div.0.exec(vars)?;
+                let rhs = div.1.exec(vars)?;
+
+                match (lhs, rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.wrapping_div(rhs))),
+                    (lhs, rhs) => {
+                        todo!("eval {lhs}+{rhs}")
+                    }
+                }
+            }
             ast::Expr::Call(call) => call.exec(vars),
         }
     }
