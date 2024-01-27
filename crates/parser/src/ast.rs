@@ -313,9 +313,9 @@ impl Expr {
 
             let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
             if is_mul {
-                lhs = Self::Add(expr);
+                lhs = Self::Mul(expr);
             } else {
-                lhs = Self::Sub(expr);
+                lhs = Self::Div(expr);
             }
         }
 

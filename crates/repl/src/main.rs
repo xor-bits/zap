@@ -6,7 +6,7 @@ use parser::{ast, Parse, ParseStream};
 
 fn main() {
     let str = r#"
-        const := { 1 + 1 };
+        const := { 1 + 2 * 3 };
 
         add := fn(a: i32, b: i32) -> i32 {
             a + b
@@ -14,6 +14,7 @@ fn main() {
 
         main := fn() -> i32 {
             print("Hello world ", add(const, const));
+            print("const = " + const);
             print("str con" + "cat");
             return 0;
         };
@@ -28,8 +29,9 @@ fn main() {
     //     .transpose()
     //     .map(|t| t.map(|t| t.as_str().to_string()))
     //     .map_err(|err| err.to_string());
+    // println!("{extra:?}");
 
-    // println!("{ast:?} {extra:?}");
+    // println!("{ast:#?}");
 
     if let Ok(ast) = ast {
         let mut runner = Runner::new();
