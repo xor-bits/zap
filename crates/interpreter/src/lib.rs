@@ -20,6 +20,16 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 //
 
+#[derive(Debug, Clone, Copy)]
+pub enum Type {
+    Int,
+    Str,
+    Func,
+    None,
+}
+
+//
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Int(i128),
@@ -46,6 +56,16 @@ impl Value {
 
     pub const fn none() -> Self {
         Self::None
+    }
+
+    pub const fn ty(&self) -> Type {
+        match self {
+            Value::Int(_) => Type::Int,
+            Value::Str(_) => Type::Str,
+            Value::Func(_) => Type::Func,
+            Value::ExtFunc(_) => Type::Func,
+            Value::None => Type::None,
+        }
     }
 }
 
@@ -147,7 +167,7 @@ impl Runner {
         let mut vars = self.vars();
 
         assert_eq!(func.args.as_ref().map_or(0, |s| s.iter().len()), args.len());
-        for (arg, val) in func.args.iter().map(|c| c.iter()).flatten().zip(args) {
+        for (arg, val) in func.args.iter().flat_map(|c| c.iter()).zip(args) {
             vars.init(arg.id.value.as_str().into(), val);
         }
 
@@ -330,7 +350,23 @@ impl Execute for ast::Expr {
             ast::Expr::LitStr(lit) => Ok(Value::Str(lit.value.as_str().into())),
             ast::Expr::Load(load) => vars.load(&load.value).ok_or(Error::VarNotFound),
             ast::Expr::Func(func) => Ok(Value::Func(func.clone().into())),
-            ast::Expr::Add(_) => todo!(),
+            ast::Expr::Add(add) => {
+                let lhs = add.0.exec(vars)?;
+                let rhs = add.1.exec(vars)?;
+
+                match (lhs, rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
+                    (Value::Str(lhs), Value::Int(rhs)) => {
+                        Ok(Value::Str(format!("{lhs}{rhs}").into()))
+                    }
+                    (Value::Str(lhs), Value::Str(rhs)) => {
+                        Ok(Value::Str(format!("{lhs}{rhs}").into()))
+                    }
+                    (lhs, rhs) => {
+                        todo!("eval {lhs}+{rhs}");
+                    }
+                }
+            }
             ast::Expr::Sub(_) => todo!(),
             ast::Expr::Mul(_) => todo!(),
             ast::Expr::Div(_) => todo!(),
@@ -356,11 +392,17 @@ impl Execute for ast::Call {
 
 impl Execute for ast::Block {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
+        let mut last = Value::None;
         for stmt in self.stmts.iter() {
-            let val = stmt.exec(vars)?;
-            if !matches!(val, Value::None) {
-                return Ok(val);
+            last = stmt.exec(vars)?;
+            if !matches!(last, Value::None) {
+                return Ok(last);
             }
+        }
+
+        if self.auto_return {
+            println!("auto return {last}");
+            return Ok(last);
         }
 
         Ok(Value::None)
@@ -370,14 +412,8 @@ impl Execute for ast::Block {
 impl Execute for ast::Stmt {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
         match self {
-            ast::Stmt::Init(init) => {
-                _ = init.exec(vars)?;
-                Ok(Value::None)
-            }
-            ast::Stmt::Expr(expr) => {
-                _ = expr.expr.exec(vars)?;
-                Ok(Value::None)
-            }
+            ast::Stmt::Init(init) => init.exec(vars),
+            ast::Stmt::Expr(expr) => expr.expr.exec(vars),
             ast::Stmt::Return(expr) => expr.expr.exec(vars),
         }
     }

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt, iter::Filter, mem::MaybeUninit, thread, time::Duration};
+use std::{collections::VecDeque, fmt, iter::Filter};
 
 use lexer::{Lexer, SpannedToken, Token};
 
@@ -132,21 +132,22 @@ impl<'a> ParseStream<'a> {
         }
     }
 
+    #[allow(clippy::let_and_return)]
     pub fn parse<T: Parse>(&mut self) -> Result<T> {
-        println!(
-            "parsing {} (top: [{}, {}])",
-            core::any::type_name::<T>(),
-            self.top1().copied().unwrap_or(Self::EOI),
-            self.top2().copied().unwrap_or(Self::EOI),
-        );
+        // println!(
+        //     "parsing {} (top: [{}, {}])",
+        //     core::any::type_name::<T>(),
+        //     self.top1().copied().unwrap_or(Self::EOI),
+        //     self.top2().copied().unwrap_or(Self::EOI),
+        // );
 
         let res = T::parse(self);
 
-        println!(
-            " result {} = {:?}",
-            core::any::type_name::<T>(),
-            res.as_ref().map(|_| {})
-        );
+        // println!(
+        //     " result {} = {:?}",
+        //     core::any::type_name::<T>(),
+        //     res.as_ref().map(|_| {})
+        // );
         res
     }
 }

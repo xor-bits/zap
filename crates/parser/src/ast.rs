@@ -1,5 +1,3 @@
-use std::iter;
-
 use crate::{unexpected, Parse, ParseStream, Result, Token};
 use macros::Parse;
 
@@ -183,6 +181,7 @@ pub struct Test {
 pub struct Block {
     pub open: LBrace,
     pub stmts: Vec<Stmt>,
+    pub auto_return: bool,
     pub close: RBrace,
 }
 
@@ -211,13 +210,19 @@ impl Parse for Block {
                 return Ok(Self {
                     open,
                     stmts,
+                    auto_return: true,
                     close: RBrace,
                 });
             }
         }
         let close = tokens.parse()?;
 
-        Ok(Self { open, stmts, close })
+        Ok(Self {
+            open,
+            stmts,
+            auto_return: false,
+            close,
+        })
     }
 }
 
@@ -284,7 +289,6 @@ pub enum Expr {
 
 impl Expr {
     fn parse_math_expr(tokens: &mut ParseStream) -> Result<Self> {
-        println!("parse_math_expr");
         let mut lhs: Self = Self::parse_math_term(tokens)?;
 
         while tokens.peek1(Token::Plus) | tokens.peek1(Token::Minus) {
@@ -302,7 +306,6 @@ impl Expr {
     }
 
     fn parse_math_term(tokens: &mut ParseStream) -> Result<Self> {
-        println!("parse_math_term");
         let mut lhs: Self = Self::parse_math_call(tokens)?;
 
         while tokens.peek1(Token::Asterisk) | tokens.peek1(Token::Slash) {
@@ -320,7 +323,6 @@ impl Expr {
     }
 
     fn parse_math_call(tokens: &mut ParseStream) -> Result<Self> {
-        println!("parse_math_call");
         let mut lhs: Self = Self::parse_math_atom(tokens)?;
 
         while tokens.peek1(Token::LParen) {
@@ -358,7 +360,6 @@ impl Expr {
     }
 
     fn parse_math_atom(tokens: &mut ParseStream) -> Result<Self> {
-        println!("parse_math_atom");
         let mut look = tokens.look1();
         if look.peek(Token::LBrace) {
             Ok(Self::Block(tokens.parse()?))
@@ -488,7 +489,6 @@ impl Parse for LitStr {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let tok = tokens.expect_next(Token::LitStr)?;
         let tok = tok.as_str();
-        println!("LitStr {tok}");
         let value = tok[1..tok.len() - 1].to_string();
 
         Ok(LitStr { value })
