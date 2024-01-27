@@ -1,7 +1,7 @@
 use std::process::exit;
 
 use interpreter::Runner;
-use lexer::{Lexer, Token};
+use lexer::Lexer;
 use parser::{ast, Parse, ParseStream};
 
 //

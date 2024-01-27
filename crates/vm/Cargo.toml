@@ -1,5 +1,5 @@
 [package]
-name = "codegen"
+name = "vm"
 version.workspace = true
 edition.workspace = true
 
@@ -7,4 +7,3 @@ edition.workspace = true
 
 [dependencies]
 bytecode.path = "../bytecode"
-parser.path = "../parser"

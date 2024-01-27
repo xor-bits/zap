@@ -177,6 +177,96 @@ fn generate_parser_impl(id: Ident, data: Data, generics: Generics) -> syn::Resul
     // })
 }
 
+//
+
+#[proc_macro_derive(Opcode)]
+pub fn derive_opcode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    match try_derive_opcode(input) {
+        Ok(v) => v.into(),
+        Err(err) => err.into_compile_error().into(),
+    }
+}
+
+fn try_derive_opcode(input: syn::DeriveInput) -> syn::Result<TokenStream> {
+    let data = match input.data {
+        syn::Data::Enum(data) => data,
+        _ => return err(Span::call_site(), "only enums are supported"),
+    };
+
+    let ops = data
+        .variants
+        .into_iter()
+        .enumerate()
+        .map(|(i, variant)| {
+            (
+                u8::try_from(i).expect("too many variants"),
+                variant.ident.to_string().to_lowercase(),
+                variant.ident,
+            )
+        })
+        .collect::<Vec<(u8, String, Ident)>>();
+
+    let as_byte = ops.iter().map(|(i, _, id)| {
+        quote! { Self::#id => #i, }
+    });
+
+    let from_byte = ops.iter().map(|(i, _, id)| {
+        quote! { #i => Self::#id, }
+    });
+
+    let as_asm = ops.iter().map(|(_, name, id)| {
+        quote! { Self::#id => #name, }
+    });
+
+    let from_asm = ops.iter().map(|(_, name, id)| {
+        quote! { #name => Self::#id, }
+    });
+
+    // .fold(quote! {}, |acc, s| {});
+
+    let id = input.ident;
+    let (imp, gen, wher) = input.generics.split_for_impl();
+
+    Ok(quote! {
+        impl #imp #id #gen #wher {
+            // $(
+            //     $(#[$($t)*])?
+            //     pub const $id: Self = Self($num);
+            // )*
+
+            pub const fn as_byte(self) -> u8 {
+                match self {
+                    #(#as_byte)*
+                }
+            }
+
+            pub const fn from_byte(b: u8) -> Option<Self> {
+                Some(match b {
+                    #(#from_byte)*
+                    _ => return None,
+                })
+            }
+
+            pub const fn as_asm(self) -> &'static str {
+                match self {
+                    #(#as_asm)*
+                }
+            }
+
+            pub fn from_asm(s: &str) -> Option<Self> {
+                Some(match s {
+                    #(#from_asm)*
+                    _ => return None
+                })
+            }
+        }
+    })
+}
+
+//
+
 fn err<T>(s: Span, e: impl fmt::Display) -> syn::Result<T> {
     Err(syn::Error::new(s.span(), e))
 }
