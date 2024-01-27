@@ -188,52 +188,61 @@ impl Token {
         ]
     }
 
-    pub const fn as_token_str(self) -> Option<&'static str> {
-        Some(match self {
-            Token::Semi => ";",
-            Token::Assign => "=",
-            Token::LParen => "(",
-            Token::RParen => ")",
-            Token::LBrace => "{",
-            Token::RBrace => "}",
-            Token::Plus => "+",
-            Token::Minus => "-",
-            Token::Asterisk => "*",
-            Token::Slash => "/",
-            Token::Colon => ":",
-            Token::Comma => ",",
-            Token::At => "@",
-            Token::Ampersand => "&",
-            Token::Lt => "<",
-            Token::Gt => ">",
-            Token::Le => "<=",
-            Token::Ge => ">=",
-            Token::Eq => "==",
-            Token::Neq => "!=",
-            Token::Walrus => ":=",
-            Token::RArrow => "->",
-            Token::Fn => "fn",
-            Token::Return => "return",
-            Token::Struct => "struct",
-            Token::Test => "test",
-            Token::LineComment => return None,
-            Token::Ident => return None,
-            Token::LitFloat => return None,
-            Token::LitInt => return None,
-            Token::LitStr => return None,
-            Token::Eoi => return None,
-        })
+    pub const fn token_type(self) -> TokenType {
+        match self {
+            Token::Semi => TokenType::Symbols(";"),
+            Token::Assign => TokenType::Symbols("="),
+            Token::LParen => TokenType::Symbols("("),
+            Token::RParen => TokenType::Symbols(")"),
+            Token::LBrace => TokenType::Symbols("{"),
+            Token::RBrace => TokenType::Symbols("}"),
+            Token::Plus => TokenType::Symbols("+"),
+            Token::Minus => TokenType::Symbols("-"),
+            Token::Asterisk => TokenType::Symbols("*"),
+            Token::Slash => TokenType::Symbols("/"),
+            Token::Colon => TokenType::Symbols(":"),
+            Token::Comma => TokenType::Symbols(","),
+            Token::At => TokenType::Symbols("@"),
+            Token::Ampersand => TokenType::Symbols("&"),
+            Token::Lt => TokenType::Symbols("<"),
+            Token::Gt => TokenType::Symbols(">"),
+            Token::Le => TokenType::Symbols("<="),
+            Token::Ge => TokenType::Symbols(">="),
+            Token::Eq => TokenType::Symbols("=="),
+            Token::Neq => TokenType::Symbols("!="),
+            Token::Walrus => TokenType::Symbols(":="),
+            Token::RArrow => TokenType::Symbols("->"),
+            Token::Fn => TokenType::Keyword("fn"),
+            Token::Return => TokenType::Keyword("return"),
+            Token::Struct => TokenType::Keyword("struct"),
+            Token::Test => TokenType::Keyword("test"),
+            Token::LineComment => TokenType::Other,
+            Token::Ident => TokenType::Other,
+            Token::LitFloat => TokenType::Other,
+            Token::LitInt => TokenType::Other,
+            Token::LitStr => TokenType::Other,
+            Token::Eoi => TokenType::Other,
+        }
     }
 }
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(s) = self.as_token_str() {
-            f.write_str(s)
-        } else {
-            write!(f, "{self:?}")
+        match self.token_type() {
+            TokenType::Symbols(s) => f.write_str(s),
+            TokenType::Keyword(s) => f.write_str(s),
+            TokenType::Other => write!(f, "{self:?}"),
         }
     }
+}
+
+//
+
+#[derive(Debug, Clone, Copy)]
+pub enum TokenType {
+    Symbols(&'static str),
+    Keyword(&'static str),
+    Other,
 }
 
 //
@@ -368,7 +377,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn try_match(&mut self, token: Token) -> Option<Result<SpannedToken<'a>>> {
-        let str = token.as_token_str()?;
+        let TokenType::Symbols(str) = token.token_type() else {
+            return None;
+        };
         if !self.at.starts_with(str) {
             return None;
         }
@@ -430,7 +441,7 @@ impl<'a> Lexer<'a> {
         }
 
         let term = self.at[1..]
-            .find(|c: char| !c.is_alphanumeric())
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
             .map(|term| term + 1)
             .unwrap_or(self.at.len());
 
@@ -487,19 +498,46 @@ impl<'a> Iterator for Lexer<'a> {
             .iter()
             .rev()
             .copied()
-            .filter(|tok| tok.as_token_str().is_some())
+            .filter_map(|tok| match tok.token_type() {
+                TokenType::Symbols(s) => Some((tok, s)),
+                _ => None,
+            })
             // just a debug assert to make sure that the tokens are in the correct order
-            .scan(usize::MAX, |prev, now| {
-                let len = now.as_token_str().map(str::len).unwrap_or(0);
-                debug_assert!(*prev >= len);
-                Some((len, now))
+            .scan(usize::MAX, |prev, (now, s)| {
+                debug_assert!(*prev >= s.len());
+                Some((s.len(), now))
             })
         {
             some!(self.try_match(token));
         }
 
         // idents after keywords
-        some!(self.try_match_ident());
+        if let Some(ident) = self.try_match_ident() {
+            let ident = match ident {
+                Ok(ident) => ident,
+                Err(err) => return Some(Err(err)),
+            };
+
+            for (s, token) in
+                Token::enumerate()
+                    .iter()
+                    .rev()
+                    .copied()
+                    .filter_map(|tok| match tok.token_type() {
+                        TokenType::Keyword(s) => Some((s, tok)),
+                        _ => None,
+                    })
+            {
+                if ident.as_str() == s {
+                    return Some(Ok(SpannedToken {
+                        token,
+                        span: ident.span,
+                    }));
+                }
+            }
+
+            return Some(Ok(ident));
+        }
 
         if !self.at.is_empty() {
             return self.err(Error::ExtraTokens);
@@ -513,7 +551,7 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Lexer, Result, SpannedToken, Token};
+    use crate::{Lexer, Result, SpannedToken, Token, TokenType};
 
     use insta::assert_yaml_snapshot;
     use serde::Serialize;
@@ -543,7 +581,23 @@ mod tests {
     fn lex_all_simple() {
         let all_tokens: String = Token::enumerate()
             .iter()
-            .filter_map(|tok| tok.as_token_str())
+            .filter_map(|tok| match tok.token_type() {
+                TokenType::Symbols(s) | TokenType::Keyword(s) => Some(format!("{s} ")),
+                TokenType::Other => None,
+            })
+            .collect();
+
+        assert_yaml_snapshot!(lex(&all_tokens));
+    }
+
+    #[test]
+    fn lex_all_no_spaces() {
+        let all_tokens: String = Token::enumerate()
+            .iter()
+            .filter_map(|tok| match tok.token_type() {
+                TokenType::Symbols(s) | TokenType::Keyword(s) => Some(s),
+                TokenType::Other => None,
+            })
             .collect();
 
         assert_yaml_snapshot!(lex(&all_tokens));

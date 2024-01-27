@@ -112,7 +112,7 @@ expression: "lex(include_str!(\"../../../tests/trivial\"))"
       span:
         range: 147..148
         str: ;
-    - token: Ident
+    - token: Return
       span:
         range: 150..156
         str: return
@@ -138,12 +138,8 @@ expression: "lex(include_str!(\"../../../tests/trivial\"))"
         str: "// automatic `return` without `;`"
     - token: Ident
       span:
-        range: 198..201
-        str: mul
-    - token: Ident
-      span:
-        range: 201..203
-        str: _2
+        range: 198..203
+        str: mul_2
     - token: Walrus
       span:
         range: 204..206
@@ -586,20 +582,8 @@ expression: "lex(include_str!(\"../../../tests/trivial\"))"
         str: "@"
     - token: Ident
       span:
-        range: 504..505
-        str: _
-    - token: Ident
-      span:
-        range: 505..510
-        str: _lang
-    - token: Ident
-      span:
-        range: 510..515
-        str: _test
-    - token: Ident
-      span:
-        range: 515..522
-        str: _extern
+        range: 504..522
+        str: __lang_test_extern
     - token: Semi
       span:
         range: 522..523
@@ -758,12 +742,8 @@ expression: "lex(include_str!(\"../../../tests/trivial\"))"
         str: (
     - token: Ident
       span:
-        range: 673..676
-        str: mul
-    - token: Ident
-      span:
-        range: 676..678
-        str: _2
+        range: 673..678
+        str: mul_2
     - token: LParen
       span:
         range: 678..679

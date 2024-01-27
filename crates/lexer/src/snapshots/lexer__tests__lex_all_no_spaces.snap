@@ -2,7 +2,7 @@
 source: crates/lexer/src/lib.rs
 expression: lex(&all_tokens)
 ---
-- "; = ( ) { } + - * / : , @ & < > <= >= == != := -> fn return struct test "
+- ";=(){}+-*/:,@&<><=>===!=:=->fnreturnstructtest"
 - Ok:
     - token: Semi
       span:
@@ -10,106 +10,94 @@ expression: lex(&all_tokens)
         str: ;
     - token: Assign
       span:
-        range: 2..3
+        range: 1..2
         str: "="
     - token: LParen
       span:
-        range: 4..5
+        range: 2..3
         str: (
     - token: RParen
       span:
-        range: 6..7
+        range: 3..4
         str: )
     - token: LBrace
       span:
-        range: 8..9
+        range: 4..5
         str: "{"
     - token: RBrace
       span:
-        range: 10..11
+        range: 5..6
         str: "}"
     - token: Plus
       span:
-        range: 12..13
+        range: 6..7
         str: +
     - token: Minus
       span:
-        range: 14..15
+        range: 7..8
         str: "-"
     - token: Asterisk
       span:
-        range: 16..17
+        range: 8..9
         str: "*"
     - token: Slash
       span:
-        range: 18..19
+        range: 9..10
         str: /
     - token: Colon
       span:
-        range: 20..21
+        range: 10..11
         str: ":"
     - token: Comma
       span:
-        range: 22..23
+        range: 11..12
         str: ","
     - token: At
       span:
-        range: 24..25
+        range: 12..13
         str: "@"
     - token: Ampersand
       span:
-        range: 26..27
+        range: 13..14
         str: "&"
     - token: Lt
       span:
-        range: 28..29
+        range: 14..15
         str: "<"
     - token: Gt
       span:
-        range: 30..31
+        range: 15..16
         str: ">"
     - token: Le
       span:
-        range: 32..34
+        range: 16..18
         str: "<="
     - token: Ge
       span:
-        range: 35..37
+        range: 18..20
         str: ">="
     - token: Eq
       span:
-        range: 38..40
+        range: 20..22
         str: "=="
     - token: Neq
       span:
-        range: 41..43
+        range: 22..24
         str: "!="
     - token: Walrus
       span:
-        range: 44..46
+        range: 24..26
         str: ":="
     - token: RArrow
       span:
-        range: 47..49
+        range: 26..28
         str: "->"
-    - token: Fn
+    - token: Ident
       span:
-        range: 50..52
-        str: fn
-    - token: Return
-      span:
-        range: 53..59
-        str: return
-    - token: Struct
-      span:
-        range: 60..66
-        str: struct
-    - token: Test
-      span:
-        range: 67..71
-        str: test
+        range: 28..46
+        str: fnreturnstructtest
     - token: Eoi
       span:
-        range: 71..71
+        range: 46..46
         str: ""
 

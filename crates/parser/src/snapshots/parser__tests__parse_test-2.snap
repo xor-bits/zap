@@ -1,0 +1,8 @@
+---
+source: crates/parser/src/lib.rs
+expression: "parse::<ast::Root>(\"val := \")"
+---
+- "val := "
+- Err: "unexpected token `<eoi>`, expected one of `{, LitInt, LitStr, Ident, (, fn`"
+- Ok: ""
+
