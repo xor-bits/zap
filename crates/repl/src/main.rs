@@ -7,7 +7,7 @@ use parser::{ast, Parse, ParseStream};
 //
 
 fn main() {
-    let str = r#"
+    let str = r#"  
         const := { 1 + 2 * 3 };
 
         add := fn(a: i32, b: i32) -> i32 {
@@ -15,7 +15,10 @@ fn main() {
         }
     
         main := fn() -> i32 {
-            return add(const, 2);
+            tmp := 4;
+            sum := add(tmp, const);
+            print();
+            return sum;
         }
 
         // add := fn(a: i32, b: i32) -> i32 {
@@ -66,7 +69,14 @@ fn main() {
     // });
 
     let mut codegen = CodeGen::new();
+    let mut module = codegen.module();
+    module
+        .add_extern("print", || {
+            println!("called print");
+        })
+        .unwrap();
+    module.add(&ast).unwrap();
+    let val = module.run().unwrap();
 
-    let val = codegen.run(ast).unwrap();
     println!("\nmain returned: `{val}`");
 }

@@ -1,14 +1,19 @@
-use std::{collections::HashMap, mem::transmute, rc::Rc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    mem::transmute,
+    rc::Rc,
+};
 
 use inkwell as llvm;
 use llvm::{
     builder::Builder,
     context::Context,
+    execution_engine::ExecutionEngine,
     module::{Linkage, Module},
     values::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue,
     },
-    OptimizationLevel,
+    AddressSpace, OptimizationLevel,
 };
 use parser::ast;
 
@@ -18,6 +23,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone)]
 pub enum Error {
+    NoMainFn,
+    InvalidMainFn,
     StaticRedefined(String),
     VariableNotFound(String),
 }
@@ -33,49 +40,103 @@ impl CodeGen {
         Self { ctx: None }
     }
 
-    pub fn run(&mut self, ast: ast::Ast<ast::Root>) -> Result<i32> {
+    pub fn module(&mut self) -> ModuleGen {
         let ctx = *self.ctx.get_or_insert_with(context);
 
         let module = ctx.create_module("<run>");
         let builder = ctx.create_builder();
 
-        let mut module = ModuleGen {
-            ctx,
-            module,
-            builder,
-            statics: HashMap::new(),
-            namespace: "<run>".to_string(),
-            locals: Vec::new(),
-        };
-
-        ast.emit_ir(&mut module)?;
-
-        eprintln!("LLVM IR:\n");
-        module.module.print_to_stderr();
-
-        eprintln!("running main");
         let engine = module
-            .module
             .create_jit_execution_engine(OptimizationLevel::Aggressive)
             .unwrap();
 
-        let main_fn =
-            unsafe { engine.get_function::<unsafe extern "C" fn() -> i32>("<run>::main") }.unwrap();
-
-        Ok(unsafe { main_fn.call() })
+        ModuleGen {
+            ctx,
+            module,
+            builder,
+            engine,
+            statics: HashMap::new(),
+            namespace: "<run>".to_string(),
+            locals: Vec::new(),
+        }
     }
 }
 
 //
 
-struct ModuleGen {
+pub struct ModuleGen {
     ctx: &'static Context,
     module: Module<'static>,
     builder: Builder<'static>,
 
+    engine: ExecutionEngine<'static>,
+
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
     locals: Vec<HashMap<Rc<str>, Value>>,
+}
+
+impl ModuleGen {
+    pub fn add(&mut self, ast: &ast::Ast<ast::Root>) -> Result<()> {
+        ast.emit_ir(self)?;
+        Ok(())
+    }
+
+    pub fn add_extern(&mut self, name: &str, f: fn()) -> Result<()> {
+        let wrapper = self.ctx.void_type().fn_type(&[], false);
+        let wrapper_ptr = self.module.add_function(name, wrapper, None);
+
+        match self.statics.entry(name.into()) {
+            Entry::Occupied(_) => return Err(Error::StaticRedefined(name.into())),
+            Entry::Vacant(entry) => entry.insert(Value::Func(FuncValue {
+                data: None,
+                fn_ptr: wrapper_ptr,
+            })),
+        };
+
+        let entry = self.ctx.append_basic_block(wrapper_ptr, "entry");
+        self.builder.position_at_end(entry);
+
+        let ty_usize = self
+            .ctx
+            .ptr_sized_int_type(self.engine.get_target_data(), None);
+        let ty_ptr = ty_usize.ptr_type(AddressSpace::default());
+        let fn_ptr = self
+            .builder
+            .build_int_to_ptr(
+                ty_usize.const_int(f as usize as _, false),
+                ty_ptr,
+                "wrapped-fn-ptr",
+            )
+            .unwrap();
+        self.builder
+            .build_indirect_call(wrapper, fn_ptr, &[], "call-fn-ptr")
+            .unwrap();
+
+        self.builder.build_return(None).unwrap();
+
+        if !wrapper_ptr.verify(true) {
+            eprintln!("LLVM IR:\n");
+            self.module.print_to_stderr();
+            panic!("invalid fn");
+        }
+
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<i32> {
+        // eprintln!("LLVM IR:\n");
+        // module.module.print_to_stderr();
+
+        // FIXME: validate the main function signature
+        let main_fn = unsafe {
+            self.engine
+                .get_function::<unsafe extern "C" fn() -> i32>("<run>::main")
+        }
+        .unwrap();
+
+        Ok(unsafe { main_fn.call() })
+    }
 }
 
 //
@@ -142,9 +203,10 @@ impl EmitIr for ast::RootInit {
                 expr => expr.eval()?.emit_ir(gen)?,
             };
 
-            if gen.statics.insert(var_name.into(), v).is_some() {
-                return Err(Error::StaticRedefined(var_name.into()));
-            }
+            match gen.statics.entry(var_name.into()) {
+                Entry::Occupied(_) => return Err(Error::StaticRedefined(var_name.into())),
+                Entry::Vacant(entry) => entry.insert(v),
+            };
 
             gen.namespace
                 .truncate(gen.namespace.len() - 2 - var_name.len());
@@ -346,17 +408,10 @@ impl EmitIr for ast::Expr {
                     .build_direct_call(func.fn_ptr, &args, "tmp-call")
                     .unwrap();
 
-                match val.as_any_value_enum() {
-                    AnyValueEnum::ArrayValue(_) => todo!(),
-                    AnyValueEnum::IntValue(v) => Ok(Value::I32(v)),
-                    AnyValueEnum::FloatValue(_) => todo!(),
-                    AnyValueEnum::PhiValue(_) => todo!(),
-                    AnyValueEnum::FunctionValue(_) => todo!(),
-                    AnyValueEnum::PointerValue(_) => todo!(),
-                    AnyValueEnum::StructValue(_) => todo!(),
-                    AnyValueEnum::VectorValue(_) => todo!(),
-                    AnyValueEnum::InstructionValue(_) => todo!(),
-                    AnyValueEnum::MetadataValue(_) => todo!(),
+                match val.try_as_basic_value().left() {
+                    Some(BasicValueEnum::IntValue(v)) => Ok(Value::I32(v)),
+                    None => Ok(Value::None),
+                    _ => todo!(),
                 }
             }
         }
