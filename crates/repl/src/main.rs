@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use interpreter::Runner;
+use codegen::CodeGen;
 use lexer::Lexer;
 use parser::{ast, Parse, ParseStream};
 
@@ -8,29 +8,37 @@ use parser::{ast, Parse, ParseStream};
 
 fn main() {
     let str = r#"
-        const := { 1 + 2 * 3 };
-
         add := fn(a: i32, b: i32) -> i32 {
             a + b
-        };
-
-        fn_factory := fn() -> i32 {
-            fn(a: i32, b: i32) -> i32 {
-                a + b
-            }
-        };
-
-        main := fn() -> i32 {
-            print("Hello world ", add(const, const));
-            print("const = " + const);
-            print("str con" + "cat");
-
-            tmp := fn_factory();
-
-            print("tmp: " + tmp(5, 6));
+        }
     
-            return 0;
-        };
+        main := fn() -> i32 {
+            return add(1, 2);
+        }
+
+        // const := { 1 + 2 * 3 };
+
+        // add := fn(a: i32, b: i32) -> i32 {
+        //     a + b
+        // };
+
+        // fn_factory := fn() -> i32 {
+        //     fn(a: i32, b: i32) -> i32 {
+        //         a + b
+        //     }
+        // };
+
+        // main := fn() -> i32 {
+        //     print("Hello world ", add(const, const));
+        //     print("const = " + const);
+        //     print("str con" + "cat");
+
+        //     tmp := fn_factory();
+
+        //     print("tmp: " + tmp(5, 6));
+    
+        //     return 0;
+        // };
     "#;
     // println!("{str}");
 
@@ -49,13 +57,16 @@ fn main() {
         exit(-1);
     });
 
-    let mut runner = Runner::new();
-    runner.add_defaults();
+    // let mut runner = Runner::new();
+    // runner.add_defaults();
 
-    let val = runner.exec(&ast).unwrap_or_else(|err| {
-        eprintln!("runtime err: {err:?}");
-        exit(-1);
-    });
+    // let val = runner.exec(&ast).unwrap_or_else(|err| {
+    //     eprintln!("runtime err: {err:?}");
+    //     exit(-1);
+    // });
 
+    let mut codegen = CodeGen::new();
+
+    let val = codegen.run(ast).unwrap();
     println!("\nmain returned: `{val}`");
 }

@@ -35,13 +35,12 @@
             ncurses
             libffi
             libxml2
-            llvmPackages_16.llvm
-            llvmPackages_16.bintools
+            llvmPackages_17.llvm
+            llvmPackages_17.bintools
           ];
 
           shellHook = ''
-            #export LLVM_SYS_160_PREFIX=$(dirname $(dirname $(which llvm-config)));
-            export LLVM_SYS_160_PREFIX=${pkgs.llvmPackages_16.llvm.dev};
+            export LLVM_SYS_170_PREFIX=${pkgs.llvmPackages_17.llvm.dev};
           '';
 
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}";

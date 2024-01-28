@@ -8,3 +8,5 @@ edition.workspace = true
 [dependencies]
 bytecode.path = "../bytecode"
 parser.path = "../parser"
+
+inkwell = { version = "0.3", features = ["llvm17-0"] }

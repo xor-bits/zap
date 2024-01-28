@@ -1,8 +1,4 @@
-use std::{
-    mem::{size_of, swap},
-    ops::DerefMut,
-    ptr::slice_from_raw_parts_mut,
-};
+use std::{mem::size_of, ops::DerefMut};
 
 use bytecode::{BytecodeHeader, Opcode};
 
@@ -17,6 +13,7 @@ pub enum Error {
     InvalidOpcode,
     StackUnderflow,
     StackOverflow,
+    InvalidRegister,
 }
 
 //
@@ -66,6 +63,24 @@ impl VirtMachine {
                 Opcode::I32Const => {
                     let val: i32 = self.regs.pop_ip(bytecode)?;
                     self.regs.push_sp(val, stack)?;
+                }
+                Opcode::I32Load => {
+                    let reg: u8 = self.regs.pop_ip(bytecode)?;
+                    let reg_val = *self
+                        .regs
+                        .regs
+                        .get(reg as usize)
+                        .ok_or(Error::InvalidRegister)? as i32;
+                    self.regs.push_sp(reg_val, stack)?;
+                }
+                Opcode::I32Store => {
+                    let reg: u8 = self.regs.pop_ip(bytecode)?;
+                    let reg_val: i32 = self.regs.pop_sp(stack)?;
+                    *self
+                        .regs
+                        .regs
+                        .get_mut(reg as usize)
+                        .ok_or(Error::InvalidRegister)? = reg_val as u64;
                 }
                 Opcode::I32Add => {
                     let lhs: i32 = self.regs.pop_sp(stack)?;
@@ -156,15 +171,14 @@ impl Regs {
             return Ok(());
         }
 
+        self.sp -= n;
         let stack = stack
             .get_mut(self.sp..self.sp + n)
             .ok_or(Error::StackOverflow)?;
         let code = bytecode
             .get(self.ip..self.ip + n)
             .ok_or(Error::IpOutOfBounds)?;
-
         self.ip += n;
-        self.sp += n;
 
         stack.copy_from_slice(code);
 
@@ -207,6 +221,18 @@ impl Value for i32 {
     }
 }
 
+impl Value for u8 {
+    const SIZE: usize = size_of::<Self>();
+
+    fn pop(b: &[u8]) -> Self {
+        b[0]
+    }
+
+    fn push(self, b: &mut [u8]) {
+        b[0] = self;
+    }
+}
+
 impl Value for u64 {
     const SIZE: usize = size_of::<Self>();
 
@@ -230,19 +256,18 @@ mod tests {
     #[test]
     fn run_bytecode() {
         let asm = r#"
-            call :sum_3
-            call :sum_3
-            call :sum_3
-            call :sum_3
+            i32const r0, 1
+            i32const r0, 2
+            call :sum_2
+            i32load 0
+            i32print
             exit 0
 
-            sum_3:
-            i32const 1
-            i32const 2
-            i32const 3
+            sum_2:
+            i32load 0
+            i32load 1
             i32add
-            i32add
-            i32print
+            i32store 0
             return
         "#;
 

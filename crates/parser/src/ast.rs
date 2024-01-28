@@ -52,7 +52,7 @@ impl Parse for Root {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootItem {
-    Init(Init),
+    Init(RootInit),
     Test(Test),
 }
 
@@ -73,7 +73,7 @@ impl Parse for RootItem {
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
-pub struct Init {
+pub struct RootInit {
     pub targets: CommaSeparated<Target>,
     pub walrus: Walrus,
     pub exprs: CommaSeparated<Expr>,
@@ -249,6 +249,16 @@ impl Parse for Stmt {
             _ => Ok(Self::Expr(tokens.parse()?)),
         }
     }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct Init {
+    pub targets: CommaSeparated<Target>,
+    pub walrus: Walrus,
+    pub exprs: CommaSeparated<Expr>,
 }
 
 //

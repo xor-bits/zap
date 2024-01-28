@@ -66,6 +66,12 @@ pub enum Opcode {
     /// push i32 const
     I32Const,
 
+    /// push i32 const from a register
+    I32Load,
+
+    /// pop i32 const into a register
+    I32Store,
+
     /// pop 2xi32 and push the sum back
     I32Add,
 
@@ -240,6 +246,26 @@ pub fn assemble(assembly: &str) -> Result<Vec<u8>> {
 
                 bytecode.write_all(&operand.to_le_bytes()).unwrap();
             }
+            Opcode::I32Load => {
+                let operand = line
+                    .next()
+                    .unwrap_or_else(|| panic!("{} requires an operand", op.as_asm()))
+                    .trim()
+                    .parse::<u8>()
+                    .expect("operand should be u8");
+
+                bytecode.write_all(&operand.to_le_bytes()).unwrap();
+            }
+            Opcode::I32Store => {
+                let operand = line
+                    .next()
+                    .unwrap_or_else(|| panic!("{} requires an operand", op.as_asm()))
+                    .trim()
+                    .parse::<u8>()
+                    .expect("operand should be u8");
+
+                bytecode.write_all(&operand.to_le_bytes()).unwrap();
+            }
             Opcode::I32Add => {}
             Opcode::I32Print => {}
             Opcode::Goto | Opcode::Call => {
@@ -297,7 +323,14 @@ pub fn disassemble(bytecode: &mut dyn Read, assembly: &mut dyn Write) -> Result<
             Opcode::I32Const => {
                 let operand = [next()?, next()?, next()?, next()?];
                 let operand = i32::from_le_bytes(operand);
-
+                assembly.write_fmt(format_args!(" {operand}"))?;
+            }
+            Opcode::I32Load => {
+                let operand = next()?;
+                assembly.write_fmt(format_args!(" {operand}"))?;
+            }
+            Opcode::I32Store => {
+                let operand = next()?;
                 assembly.write_fmt(format_args!(" {operand}"))?;
             }
             Opcode::I32Add => {}
