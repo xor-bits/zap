@@ -8,15 +8,15 @@ use parser::{ast, Parse, ParseStream};
 
 fn main() {
     let str = r#"
+        const := { 1 + 2 * 3 };
+
         add := fn(a: i32, b: i32) -> i32 {
             a + b
         }
     
         main := fn() -> i32 {
-            return add(1, 2);
+            return add(const, 2);
         }
-
-        // const := { 1 + 2 * 3 };
 
         // add := fn(a: i32, b: i32) -> i32 {
         //     a + b

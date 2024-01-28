@@ -137,18 +137,12 @@ impl EmitIr for ast::RootInit {
             gen.namespace.push_str("::");
             gen.namespace.push_str(var_name);
 
-            let f = match expr {
-                ast::Expr::Func(f) => f,
-                _ => todo!("statics/constants"),
+            let v = match expr {
+                ast::Expr::Func(f) => Value::Func(f.emit_ir(gen)?),
+                expr => expr.eval()?.emit_ir(gen)?,
             };
 
-            let f = f.emit_ir(gen)?;
-
-            if gen
-                .statics
-                .insert(var_name.into(), Value::Func(f))
-                .is_some()
-            {
+            if gen.statics.insert(var_name.into(), v).is_some() {
                 return Err(Error::StaticRedefined(var_name.into()));
             }
 
@@ -371,13 +365,101 @@ impl EmitIr for ast::Expr {
 
 //
 
-// pub trait ConstEval {
-//     type Val;
+pub enum ConstValue {
+    // TODO: LitInt(i128)
+    I32(i32),
+    Never,
+    None,
+}
 
-//     fn eval() -> Result<Self::Val>;
-// }
+impl EmitIr for ConstValue {
+    type Val = Value;
 
-// impl ConstEval
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        Ok(match self {
+            ConstValue::I32(i) => Value::I32(gen.ctx.i32_type().const_int(*i as _, false)),
+            ConstValue::Never => Value::Never,
+            ConstValue::None => Value::None,
+        })
+    }
+}
+
+//
+
+pub trait ConstEval {
+    type Val;
+
+    fn eval(&self) -> Result<Self::Val>;
+}
+
+impl ConstEval for ast::Expr {
+    type Val = ConstValue;
+
+    fn eval(&self) -> Result<Self::Val> {
+        match self {
+            ast::Expr::Block(block) => block.eval(),
+            ast::Expr::LitInt(i) => Ok(ConstValue::I32(i.value as _)),
+            ast::Expr::LitStr(_) => todo!(),
+            ast::Expr::Load(_) => todo!(),
+            ast::Expr::Func(_) => todo!(),
+            ast::Expr::Add(sides) => match sides.eval()? {
+                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                    Ok(ConstValue::I32(lhs.wrapping_add(rhs)))
+                }
+                _ => todo!(),
+            },
+            ast::Expr::Sub(_) => todo!(),
+            ast::Expr::Mul(sides) => match sides.eval()? {
+                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                    Ok(ConstValue::I32(lhs.wrapping_mul(rhs)))
+                }
+                _ => todo!(),
+            },
+            ast::Expr::Div(_) => todo!(),
+            ast::Expr::Call(_) => todo!(),
+        }
+    }
+}
+
+impl ConstEval for ast::Block {
+    type Val = ConstValue;
+
+    fn eval(&self) -> Result<Self::Val> {
+        let mut last = None;
+        for stmt in self.stmts.iter() {
+            match stmt.eval()? {
+                ConstValue::Never => return Ok(ConstValue::Never),
+                v => last = Some(v),
+            };
+        }
+
+        if !self.auto_return {
+            return Ok(ConstValue::None);
+        }
+
+        Ok(last.unwrap_or(ConstValue::None))
+    }
+}
+
+impl ConstEval for ast::Stmt {
+    type Val = ConstValue;
+
+    fn eval(&self) -> Result<Self::Val> {
+        match self {
+            ast::Stmt::Init(_) => todo!(),
+            ast::Stmt::Expr(expr) => expr.expr.eval(),
+            ast::Stmt::Return(_) => todo!(),
+        }
+    }
+}
+
+impl<L: ConstEval, R: ConstEval> ConstEval for (L, R) {
+    type Val = (L::Val, R::Val);
+
+    fn eval(&self) -> Result<Self::Val> {
+        Ok((self.0.eval()?, self.1.eval()?))
+    }
+}
 
 //
 
