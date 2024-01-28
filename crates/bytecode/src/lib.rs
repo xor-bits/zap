@@ -1,4 +1,5 @@
 use std::{
+    collections::{hash_map::Entry, HashMap},
     io::{BufRead, Read, Write},
     mem::{size_of, transmute},
 };
@@ -12,6 +13,9 @@ pub enum Error {
     Stdio(std::io::Error),
     InvalidOpcode,
     Incompatible,
+    RedefinedSymbol(String),
+    UnresolvedSymbol(String),
+    InvalidOperand,
 }
 
 impl From<std::io::Error> for Error {
@@ -68,6 +72,15 @@ pub enum Opcode {
     /// **debug print**, pop i32 and print it
     I32Print,
 
+    /// jump into u64 const
+    Goto,
+
+    /// jump into u64 const and push a u64 return address
+    Call,
+
+    /// pop a u64 return address and jump into it
+    Return,
+
     /// pop i32 and exit with that status
     Exit,
 }
@@ -114,16 +127,99 @@ impl BytecodeHeader {
 
 //
 
-pub fn assemble(assembly: &mut dyn BufRead, bytecode: &mut dyn Write) -> Result<()> {
-    BytecodeHeader::encode(bytecode)?;
+pub struct Resolver<'a> {
+    labels: HashMap<&'a str, LabelState>,
+}
 
-    for line in assembly.lines() {
-        let line = line?;
-        let line = line.trim();
-        if line.is_empty() {
+impl<'a> Resolver<'a> {
+    pub fn new() -> Self {
+        Self {
+            labels: HashMap::new(),
+        }
+    }
+
+    pub fn found_label(&mut self, label: &'a str, bytecode: &mut Vec<u8>) -> Result<()> {
+        match self.labels.entry(label) {
+            Entry::Occupied(mut entry) => {
+                match entry.insert(LabelState::Found { ip: bytecode.len() }) {
+                    LabelState::Missing { needs_ip } => {
+                        for reference in needs_ip {
+                            let ip = bytecode.len();
+                            bytecode[reference..reference + 8].copy_from_slice(&ip.to_ne_bytes());
+                        }
+                    }
+                    LabelState::Found { .. } => {
+                        return Err(Error::RedefinedSymbol(label.to_string()))
+                    }
+                }
+            }
+            Entry::Vacant(entry) => _ = entry.insert(LabelState::Found { ip: bytecode.len() }),
+        }
+
+        Ok(())
+    }
+
+    pub fn lazy_resolve(&mut self, label: &'a str, bytecode: &mut Vec<u8>) -> Result<()> {
+        match self
+            .labels
+            .entry(label)
+            .or_insert_with(|| LabelState::Missing {
+                needs_ip: Vec::new(),
+            }) {
+            LabelState::Missing { needs_ip } => {
+                needs_ip.push(bytecode.len());
+                bytecode.write_all(&0usize.to_le_bytes()).unwrap();
+            }
+            LabelState::Found { ip } => {
+                bytecode.write_all(&ip.to_le_bytes()).unwrap();
+            }
+        };
+
+        Ok(())
+    }
+
+    pub fn finish(&self) -> Result<()> {
+        for (label, state) in self.labels.iter() {
+            match state {
+                LabelState::Missing { .. } => {
+                    return Err(Error::UnresolvedSymbol(label.to_string()))
+                }
+                LabelState::Found { .. } => {}
+            }
+        }
+
+        Ok(())
+    }
+}
+
+//
+
+enum LabelState {
+    Missing { needs_ip: Vec<usize> },
+    Found { ip: usize },
+}
+
+//
+
+pub fn assemble(assembly: &str) -> Result<Vec<u8>> {
+    let mut bytecode = Vec::new();
+
+    BytecodeHeader::encode(&mut bytecode)?;
+
+    let mut resolver = Resolver::new();
+
+    for line in assembly
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        // println!("parsing line `{line}`");
+        if let Some(label) = line.strip_suffix(':') {
+            // it is a label
+            resolver.found_label(label, &mut bytecode)?;
             continue;
         }
-        // println!("parsing line `{line}`");
+
         let mut line = line.split(' ');
 
         let op = line.next().expect("line should have an instruction");
@@ -138,6 +234,7 @@ pub fn assemble(assembly: &mut dyn BufRead, bytecode: &mut dyn Write) -> Result<
                 let operand = line
                     .next()
                     .unwrap_or_else(|| panic!("{} requires an operand", op.as_asm()))
+                    .trim()
                     .parse::<i32>()
                     .expect("operand should be i32");
 
@@ -145,6 +242,26 @@ pub fn assemble(assembly: &mut dyn BufRead, bytecode: &mut dyn Write) -> Result<
             }
             Opcode::I32Add => {}
             Opcode::I32Print => {}
+            Opcode::Goto | Opcode::Call => {
+                let operand = line
+                    .next()
+                    .unwrap_or_else(|| panic!("{} requires an operand", op.as_asm()))
+                    .trim();
+
+                if let Some(label) = operand.strip_prefix(':') {
+                    resolver.lazy_resolve(label, &mut bytecode)?;
+                } else {
+                    bytecode
+                        .write_all(
+                            &operand
+                                .parse::<u64>()
+                                .map_err(|_| Error::InvalidOperand)?
+                                .to_le_bytes(),
+                        )
+                        .unwrap();
+                }
+            }
+            Opcode::Return => {}
             Opcode::Exit => {
                 let operand = line
                     .next()
@@ -157,7 +274,9 @@ pub fn assemble(assembly: &mut dyn BufRead, bytecode: &mut dyn Write) -> Result<
         }
     }
 
-    Ok(())
+    resolver.finish()?;
+
+    Ok(bytecode)
 }
 
 pub fn disassemble(bytecode: &mut dyn Read, assembly: &mut dyn Write) -> Result<()> {
@@ -183,6 +302,23 @@ pub fn disassemble(bytecode: &mut dyn Read, assembly: &mut dyn Write) -> Result<
             }
             Opcode::I32Add => {}
             Opcode::I32Print => {}
+            Opcode::Goto | Opcode::Call => {
+                let operand = [
+                    next()?,
+                    next()?,
+                    next()?,
+                    next()?,
+                    next()?,
+                    next()?,
+                    next()?,
+                    next()?,
+                ];
+                let operand = u64::from_le_bytes(operand);
+
+                // TODO: rebuild labels
+                assembly.write_fmt(format_args!(" {operand}"))?;
+            }
+            Opcode::Return => {}
             Opcode::Exit => {}
         }
 
@@ -204,8 +340,7 @@ mod tests {
     fn assembler_test() {
         let asm = "i32const 3\ni32const 2\ni32add\ni32print\n";
 
-        let mut bytecode = Vec::new();
-        assemble(&mut Cursor::new(asm), &mut bytecode).unwrap();
+        let bytecode = assemble(asm).unwrap();
 
         let mut disasm = Vec::new();
         disassemble(&mut Cursor::new(bytecode), &mut disasm).unwrap();

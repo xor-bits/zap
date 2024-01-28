@@ -1,4 +1,8 @@
-use std::ops::DerefMut;
+use std::{
+    mem::{size_of, swap},
+    ops::DerefMut,
+    ptr::slice_from_raw_parts_mut,
+};
 
 use bytecode::{BytecodeHeader, Opcode};
 
@@ -72,6 +76,19 @@ impl VirtMachine {
                     let var: i32 = self.regs.pop_sp(stack)?;
                     print!("{var}");
                 }
+                Opcode::Goto => {
+                    let ip: u64 = self.regs.pop_ip(bytecode)?;
+                    self.regs.ip = ip as _;
+                }
+                Opcode::Call => {
+                    let ip: u64 = self.regs.pop_ip(bytecode)?;
+                    self.regs.push_sp(self.regs.ip as u64, stack)?;
+                    self.regs.ip = ip as usize;
+                }
+                Opcode::Return => {
+                    let ip: u64 = self.regs.pop_sp(stack)?;
+                    self.regs.ip = ip as usize;
+                }
                 Opcode::Exit => {
                     let exit_code: i32 = self.regs.pop_ip(bytecode)?;
                     return Ok(exit_code);
@@ -119,7 +136,6 @@ impl Regs {
 
     fn push_sp<T: Value>(&mut self, v: T, stack: &mut [u8]) -> Result<()> {
         self.sp -= T::SIZE;
-        println!("sp:{} len:{}", self.sp, stack.len());
         let le_bytes = stack
             .get_mut(self.sp..self.sp + T::SIZE)
             .ok_or(Error::StackOverflow)?;
@@ -168,7 +184,7 @@ pub trait Value {
 }
 
 impl Value for Opcode {
-    const SIZE: usize = 1;
+    const SIZE: usize = size_of::<u8>();
 
     fn pop(b: &[u8]) -> Self {
         Self::from_byte(b[0]).unwrap_or(Self::Invalid)
@@ -180,10 +196,22 @@ impl Value for Opcode {
 }
 
 impl Value for i32 {
-    const SIZE: usize = 4;
+    const SIZE: usize = size_of::<Self>();
 
     fn pop(b: &[u8]) -> Self {
-        i32::from_le_bytes(b.try_into().unwrap())
+        Self::from_le_bytes(b.try_into().unwrap())
+    }
+
+    fn push(self, b: &mut [u8]) {
+        b.copy_from_slice(&self.to_le_bytes())
+    }
+}
+
+impl Value for u64 {
+    const SIZE: usize = size_of::<Self>();
+
+    fn pop(b: &[u8]) -> Self {
+        Self::from_le_bytes(b.try_into().unwrap())
     }
 
     fn push(self, b: &mut [u8]) {
@@ -195,8 +223,6 @@ impl Value for i32 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use bytecode::assemble;
 
     use crate::VirtMachine;
@@ -204,20 +230,28 @@ mod tests {
     #[test]
     fn run_bytecode() {
         let asm = r#"
+            call :sum_3
+            call :sum_3
+            call :sum_3
+            call :sum_3
+            exit 0
+
+            sum_3:
             i32const 1
             i32const 2
             i32const 3
             i32add
             i32add
             i32print
-            exit 0
+            return
         "#;
 
-        let mut bytecode = Vec::new();
-        assemble(&mut Cursor::new(asm), &mut bytecode).unwrap();
+        let bytecode = assemble(asm).unwrap();
 
         let mut vm = VirtMachine::new();
 
         vm.run(&bytecode).unwrap();
+
+        panic!();
     }
 }
