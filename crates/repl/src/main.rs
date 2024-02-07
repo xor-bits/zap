@@ -1,5 +1,6 @@
 use std::process::exit;
 
+use codegen::CodeGen;
 use lexer::Lexer;
 use parser::{ast, Parse, ParseStream};
 use typeck::{Context, TypeCheck};
@@ -8,18 +9,16 @@ use typeck::{Context, TypeCheck};
 
 fn main() {
     let str = r#"  
-        // const := { 1 + 2 * 3 };
+        const := { 1 + 2 * 3 };
 
         add := fn(a: i32, b: i32) -> i32 {
             return a + b;
         }
     
-        // main := fn() -> i32 {
-        //     tmp := 4;
-        //     sum := add(tmp, const);
-        //     print();
-        //     return sum;
-        // }
+        main := fn() -> i32 {
+            print();
+            return sum(add(4, const), 4);
+        }
 
         typeck_a := fn() -> i32 {
             return 4 * add(2, 5) - 2;
@@ -74,34 +73,25 @@ fn main() {
         exit(-1);
     });
 
-    let mut ctx = Context::new();
-    ast.type_check(&mut ctx);
+    let mut codegen = CodeGen::new();
+    let mut module = codegen.module();
+    module
+        .add_extern("print", print as extern "C" fn())
+        .unwrap();
+    module
+        .add_extern("sum", sum as extern "C" fn(i32, i32) -> i32)
+        .unwrap();
+    module.add(ast).unwrap();
+    let val = module.run().unwrap();
 
-    println!("{ctx}");
-    // println!("{ast:#?}");
+    extern "C" fn print() {
+        println!("called print");
+    }
 
-    // let mut ctx = Context::new();
-    // ctx.add_built_in();
-    // ast.analyze(&mut ctx);
-    // println!("{ctx:#?}");
+    extern "C" fn sum(a: i32, b: i32) -> i32 {
+        println!("called sum");
+        a + b
+    }
 
-    // let mut runner = Runner::new();
-    // runner.add_defaults();
-
-    // let val = runner.exec(&ast).unwrap_or_else(|err| {
-    //     eprintln!("runtime err: {err:?}");
-    //     exit(-1);
-    // });
-
-    // let mut codegen = CodeGen::new();
-    // let mut module = codegen.module();
-    // module
-    //     .add_extern("print", || {
-    //         println!("called print");
-    //     })
-    //     .unwrap();
-    // module.add(&ast).unwrap();
-    // let val = module.run().unwrap();
-
-    // println!("\nmain returned: `{val}`");
+    println!("\nmain returned: `{val}`");
 }

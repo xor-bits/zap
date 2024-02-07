@@ -30,9 +30,9 @@ dependencies = [
 name = "codegen"
 version = "0.1.0"
 dependencies = [
- "bytecode",
  "inkwell",
  "parser",
+ "typeck",
 ]
 
 [[package]]
@@ -206,6 +206,7 @@ checksum = "30b661b2f27137bdbc16f00eda72866a92bb28af1753ffbd56744fb6e2e9cd8e"
 name = "repl"
 version = "0.1.0"
 dependencies = [
+ "codegen",
  "lexer",
  "parser",
  "typeck",

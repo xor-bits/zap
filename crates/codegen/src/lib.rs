@@ -10,12 +10,16 @@ use llvm::{
     context::Context,
     execution_engine::ExecutionEngine,
     module::{Linkage, Module},
+    types::BasicType,
     values::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue,
     },
     AddressSpace, OptimizationLevel,
 };
-use parser::ast;
+use parser::{ast, AsTypeId, TypeId};
+use typeck::{Func, TypeCheck};
+
+use self::types::{AsLlvm, FnAsLlvm, TypeAsLlvm};
 
 //
 
@@ -59,6 +63,7 @@ impl CodeGen {
             module,
             builder,
             engine,
+            types: typeck::Context::new(),
             statics: HashMap::new(),
             namespace: "<run>".to_string(),
             locals: Vec::new(),
@@ -75,20 +80,32 @@ pub struct ModuleGen {
 
     engine: ExecutionEngine<'static>,
 
+    types: typeck::Context,
+
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
     locals: Vec<HashMap<Rc<str>, Value>>,
 }
 
 impl ModuleGen {
-    pub fn add(&mut self, ast: &ast::Ast<ast::Root>) -> Result<()> {
+    pub fn add(&mut self, mut ast: ast::Ast<ast::Root>) -> Result<()> {
+        ast.type_check(&mut self.types);
         ast.emit_ir(self)?;
         Ok(())
     }
 
-    pub fn add_extern(&mut self, name: &str, f: fn()) -> Result<()> {
-        let wrapper = self.ctx.void_type().fn_type(&[], false);
-        let wrapper_ptr = self.module.add_function(name, wrapper, None);
+    pub fn add_extern<F: FnAsLlvm>(&mut self, name: &str, f: F) -> Result<()> {
+        let ret = f.return_type();
+        let args = f.args().to_vec();
+
+        let param_types: Vec<_> = args
+            .iter()
+            .filter_map(|a| a.as_llvm_meta(&self.types))
+            .collect();
+        let wrapper_ty = ret.as_llvm_fn(&self.types, &param_types, false);
+        let wrapper_ptr = self.module.add_function(name, wrapper_ty, None);
+
+        self.types.add_extern(name, Func { ret, args });
 
         match self.statics.entry(name.into()) {
             Entry::Occupied(_) => return Err(Error::StaticRedefined(name.into())),
@@ -108,16 +125,38 @@ impl ModuleGen {
         let fn_ptr = self
             .builder
             .build_int_to_ptr(
-                ty_usize.const_int(f as usize as _, false),
+                ty_usize.const_int(f.as_extern_c_fn_ptr() as _, false),
                 ty_ptr,
                 "wrapped-fn-ptr",
             )
             .unwrap();
-        self.builder
-            .build_indirect_call(wrapper, fn_ptr, &[], "call-fn-ptr")
+
+        let args: Vec<BasicMetadataValueEnum> = wrapper_ptr
+            .get_param_iter()
+            .map(|p| p.as_any_value_enum().try_into().unwrap())
+            .collect();
+
+        let val = self
+            .builder
+            .build_indirect_call(wrapper_ty, fn_ptr, &args, "call-fn-ptr")
             .unwrap();
 
-        self.builder.build_return(None).unwrap();
+        let val = match val.try_as_basic_value().left() {
+            Some(BasicValueEnum::ArrayValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::IntValue(v)) => Ok(Value::I32(v)),
+            Some(BasicValueEnum::FloatValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
+            None => Ok(Value::None),
+        }?;
+
+        match val {
+            Value::Func(_) => todo!(),
+            Value::I32(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
+            Value::Never => {}
+            Value::None => _ = self.builder.build_return(None).unwrap(),
+        };
 
         if !wrapper_ptr.verify(true) {
             eprintln!("LLVM IR:\n");
@@ -129,15 +168,15 @@ impl ModuleGen {
     }
 
     pub fn run(&mut self) -> Result<i32> {
-        // eprintln!("LLVM IR:\n");
-        // module.module.print_to_stderr();
+        eprintln!("LLVM IR:\n");
+        self.module.print_to_stderr();
 
         // FIXME: validate the main function signature
         let main_fn = unsafe {
             self.engine
                 .get_function::<unsafe extern "C" fn() -> i32>("<run>::main")
         }
-        .unwrap();
+        .expect("main not found");
 
         Ok(unsafe { main_fn.call() })
     }
@@ -202,9 +241,9 @@ impl EmitIr for ast::RootInit {
             gen.namespace.push_str("::");
             gen.namespace.push_str(var_name);
 
-            let v = match expr {
+            let v = match &expr.expr {
                 ast::AnyExpr::Func(f) => Value::Func(f.emit_ir(gen)?),
-                expr => expr.eval()?.emit_ir(gen)?,
+                _ => expr.eval()?.emit_ir(gen)?,
             };
 
             match gen.statics.entry(var_name.into()) {
@@ -225,21 +264,21 @@ impl EmitIr for ast::Func {
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
         // TODO: generic functions are generated lazily
 
-        let mut param_types = Vec::new();
-        for arg in self.args.iter().flat_map(|a| a.iter()) {
-            if arg.ty.value != "i32" {
-                todo!()
-            }
+        let func_id = gen
+            .types
+            .get_type(self.ty)
+            .as_func()
+            .expect("a function should be a function");
+        let func = gen.types.get_func(func_id);
 
-            param_types.push(gen.ctx.i32_type().into());
-        }
+        let param_types: Vec<_> = func
+            .args
+            .iter()
+            .filter_map(|id| id.as_llvm_meta(&gen.types))
+            .collect();
 
-        if Some("i32") != self.return_ty.as_ref().map(|(_, ty)| ty.value.as_str()) {
-            todo!()
-        }
-
-        let fn_ty = gen.ctx.i32_type().fn_type(&param_types, false);
-        let fn_val = gen.module.add_function(&gen.namespace, fn_ty, None);
+        let proto = func.ret.as_llvm_fn(&gen.types, &param_types, false);
+        let fn_val = gen.module.add_function(&gen.namespace, proto, None);
 
         let entry = gen.ctx.append_basic_block(fn_val, "entry");
         gen.builder.position_at_end(entry);
@@ -346,11 +385,11 @@ impl EmitIr for ast::Init {
     }
 }
 
-impl EmitIr for ast::AnyExpr {
+impl EmitIr for ast::Expr {
     type Val = Value;
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
-        match self {
+        match &self.expr {
             ast::AnyExpr::Block(_) => todo!(),
             ast::AnyExpr::LitInt(v) => {
                 let val = gen.ctx.i32_type().const_int(v.value as u64, false);
@@ -371,23 +410,42 @@ impl EmitIr for ast::AnyExpr {
                 Err(Error::VariableNotFound(var.value.clone()))
             }
             ast::AnyExpr::Func(_) => todo!(),
-            ast::AnyExpr::Add(add) => {
-                let lhs = add.0.emit_ir(gen)?;
-                let rhs = add.1.emit_ir(gen)?;
-
-                match (lhs, rhs) {
-                    (Value::I32(lhs), Value::I32(rhs)) => {
-                        let val = gen.builder.build_int_add(lhs, rhs, "tmp-int-add").unwrap();
-                        Ok(Value::I32(val))
-                    }
-                    _ => {
-                        todo!()
-                    }
+            ast::AnyExpr::Add(sides) => match sides.emit_ir(gen)? {
+                (Value::I32(lhs), Value::I32(rhs)) => {
+                    let val = gen.builder.build_int_add(lhs, rhs, "tmp").unwrap();
+                    Ok(Value::I32(val))
                 }
-            }
-            ast::AnyExpr::Sub(_) => todo!(),
-            ast::AnyExpr::Mul(_) => todo!(),
-            ast::AnyExpr::Div(_) => todo!(),
+                _ => {
+                    todo!()
+                }
+            },
+            ast::AnyExpr::Sub(sides) => match sides.emit_ir(gen)? {
+                (Value::I32(lhs), Value::I32(rhs)) => {
+                    let val = gen.builder.build_int_sub(lhs, rhs, "tmp").unwrap();
+                    Ok(Value::I32(val))
+                }
+                _ => {
+                    todo!()
+                }
+            },
+            ast::AnyExpr::Mul(sides) => match sides.emit_ir(gen)? {
+                (Value::I32(lhs), Value::I32(rhs)) => {
+                    let val = gen.builder.build_int_mul(lhs, rhs, "tmp").unwrap();
+                    Ok(Value::I32(val))
+                }
+                _ => {
+                    todo!()
+                }
+            },
+            ast::AnyExpr::Div(sides) => match sides.emit_ir(gen)? {
+                (Value::I32(lhs), Value::I32(rhs)) => {
+                    let val = gen.builder.build_int_signed_div(lhs, rhs, "tmp").unwrap();
+                    Ok(Value::I32(val))
+                }
+                _ => {
+                    todo!()
+                }
+            },
             ast::AnyExpr::Call(call) => {
                 let func = call.func.emit_ir(gen)?;
                 let func = match func {
@@ -413,12 +471,24 @@ impl EmitIr for ast::AnyExpr {
                     .unwrap();
 
                 match val.try_as_basic_value().left() {
+                    Some(BasicValueEnum::ArrayValue(v)) => todo!("{v}"),
                     Some(BasicValueEnum::IntValue(v)) => Ok(Value::I32(v)),
+                    Some(BasicValueEnum::FloatValue(v)) => todo!("{v}"),
+                    Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
+                    Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
+                    Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
                     None => Ok(Value::None),
-                    _ => todo!(),
                 }
             }
         }
+    }
+}
+
+impl<L: EmitIr, R: EmitIr> EmitIr for (L, R) {
+    type Val = (L::Val, R::Val);
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        Ok((self.0.emit_ir(gen)?, self.1.emit_ir(gen)?))
     }
 }
 
@@ -451,11 +521,11 @@ pub trait ConstEval {
     fn eval(&self) -> Result<Self::Val>;
 }
 
-impl ConstEval for ast::AnyExpr {
+impl ConstEval for ast::Expr {
     type Val = ConstValue;
 
     fn eval(&self) -> Result<Self::Val> {
-        match self {
+        match &self.expr {
             ast::AnyExpr::Block(block) => block.eval(),
             ast::AnyExpr::LitInt(i) => Ok(ConstValue::I32(i.value as _)),
             ast::AnyExpr::LitStr(_) => todo!(),

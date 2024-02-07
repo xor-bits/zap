@@ -1,12 +1,12 @@
 use core::fmt;
-use std::{collections::HashMap, mem::transmute, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use parser::{ast, TypeId};
 
 //
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FuncId(usize);
+pub struct FuncId(pub usize);
 
 //
 
@@ -22,7 +22,17 @@ pub struct Func {
 pub enum Type {
     I32,
     Func(FuncId),
+    // ExternFunc, // a function that can take any arguments
     Void,
+}
+
+impl Type {
+    pub const fn as_func(&self) -> Option<FuncId> {
+        match self {
+            Type::Func(i) => Some(*i),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -53,6 +63,22 @@ impl Context {
             vars: Vars::new(),
         }
     }
+
+    pub fn add_extern(&mut self, name: &str, func: Func) {
+        let func_id = self.funcs.push(func);
+        let type_id = self.types.push(Type::Func(func_id));
+        if self.vars.init(name, type_id).is_some() {
+            panic!("`{name}` defined twice");
+        }
+    }
+
+    pub fn get_type(&self, id: TypeId) -> &Type {
+        self.types.get(id).unwrap()
+    }
+
+    pub fn get_func(&self, id: FuncId) -> &Func {
+        self.funcs.get(id).unwrap()
+    }
 }
 
 //
@@ -74,22 +100,34 @@ impl Vars {
     pub fn get(&self, var: &str) -> Option<TypeId> {
         if let Some(local) = self.scopes.last() {
             if let Some(local) = local.get(var) {
+                assert_ne!(local, TypeId::Unknown);
+
                 return Some(local);
             }
         }
 
-        self.global_scope.get(var)
+        let global = self.global_scope.get(var)?;
+
+        assert_ne!(global, TypeId::Unknown);
+
+        Some(global)
     }
 
+    #[track_caller]
     pub fn init(&mut self, var: &str, ty: TypeId) -> Option<TypeId> {
+        assert_ne!(ty, TypeId::Unknown);
+
         self.scopes
             .last_mut()
             .unwrap_or(&mut self.global_scope)
             .init(var, ty)
     }
 
-    pub fn push(&mut self) {
-        self.scopes.push(Scope { vars: None })
+    pub fn push(&mut self, return_ty: TypeId) {
+        self.scopes.push(Scope {
+            vars: None,
+            return_ty,
+        })
     }
 
     pub fn pop(&mut self) {
@@ -138,44 +176,51 @@ impl Types {
     }
 
     pub fn get(&self, id: TypeId) -> Option<&Type> {
-        self.types.get(id.0)
+        match id {
+            TypeId::I32 => Some(&Type::I32),
+            TypeId::Void => Some(&Type::Void),
+            TypeId::Unknown => unreachable!(),
+            TypeId::Other(id) => self.types.get(id as usize),
+        }
     }
 
     #[track_caller]
     pub fn lookup(&mut self, name: &str) -> Option<TypeId> {
         match name {
-            "i32" => Some(
-                *self
-                    .typename_lookup
-                    .get_or_insert_with(<_>::default)
-                    .entry(name.into())
-                    .or_insert_with(|| Self::_push(&mut self.types, Type::I32)),
-            ),
-
+            "i32" => Some(TypeId::I32),
             _ => {
                 todo!("unknown type `{name}`")
             }
         }
     }
 
-    pub fn find(&self, ty: &Type) -> Option<TypeId> {
-        Some(TypeId(self.types.iter().position(|s| s == ty)?))
-    }
+    // pub fn find(&self, ty: &Type) -> Option<TypeId> {
+    //     Some(TypeId(self.types.iter().position(|s| s == ty)?))
+    // }
 
-    pub fn primitive(&mut self, ty: Type) -> TypeId {
-        if let Some(id) = self.find(&ty) {
-            return id;
-        }
+    // pub fn primitive(&mut self, ty: Type) -> TypeId {
+    //     match ty {
+    //         Type::I32 => self.lookup("i32"),
+    //         Type::Void => todo!(),
+    //         _ => panic!("`{ty:?}` is not a primitive"),
+    //     }
+    //     if let Some(id) = self.find(&ty) {
+    //         return id;
+    //     }
 
-        self.push(ty)
-    }
+    //     self.typename_lookup
+    //         .get_or_insert_with(<_>::default)
+    //         .insert(ty.to_string().into());
+
+    //     self.push(ty)
+    // }
 
     pub fn push(&mut self, ty: Type) -> TypeId {
         Self::_push(&mut self.types, ty)
     }
 
     fn _push(types: &mut Vec<Type>, ty: Type) -> TypeId {
-        let id = TypeId(types.len());
+        let id = TypeId::Other(types.len() as _);
         types.push(ty);
         id
     }
@@ -186,11 +231,15 @@ impl Types {
 #[derive(Debug)]
 pub struct Scope {
     vars: Option<HashMap<Rc<str>, TypeId>>,
+    return_ty: TypeId,
 }
 
 impl Scope {
     pub const fn new() -> Self {
-        Self { vars: None }
+        Self {
+            vars: None,
+            return_ty: TypeId::Unknown,
+        }
     }
 
     pub fn get(&self, var: &str) -> Option<TypeId> {
@@ -243,6 +292,9 @@ impl TypeCheck for ast::RootInit {
 
         for (target, expr) in targets.zip(exprs) {
             expr.type_check(ctx);
+            if expr.ty == TypeId::Unknown {
+                panic!("{expr:#?}");
+            }
             ctx.vars.init(&target.path.ident.value, expr.ty);
         }
     }
@@ -250,16 +302,20 @@ impl TypeCheck for ast::RootInit {
 
 impl TypeCheck for ast::Expr {
     fn type_check(&mut self, ctx: &mut Context) {
-        match &mut self.expr {
-            ast::AnyExpr::Block(_) => todo!(),
-            ast::AnyExpr::LitInt(_) => self.ty = ctx.types.primitive(Type::I32),
-            ast::AnyExpr::LitStr(_) => todo!(),
-            ast::AnyExpr::Load(v) => {
-                self.ty = ctx.vars.get(&v.value).expect("unknown variable");
+        self.ty = match &mut self.expr {
+            ast::AnyExpr::Block(v) => {
+                v.type_check(ctx);
+                v.ty
             }
+            ast::AnyExpr::LitInt(_) => TypeId::I32,
+            ast::AnyExpr::LitStr(_) => todo!(),
+            ast::AnyExpr::Load(v) => ctx
+                .vars
+                .get(&v.value)
+                .unwrap_or_else(|| panic!("unknown variable `{}`", v.value)),
             ast::AnyExpr::Func(v) => {
                 v.type_check(ctx);
-                self.ty = v.ty;
+                v.ty
             }
             ast::AnyExpr::Add(v) => {
                 v.0.type_check(ctx);
@@ -269,7 +325,7 @@ impl TypeCheck for ast::Expr {
                     ctx.types.get(v.0.ty).unwrap(),
                     ctx.types.get(v.1.ty).unwrap(),
                 ) {
-                    (Type::I32, Type::I32) => self.ty = ctx.types.primitive(Type::I32),
+                    (Type::I32, Type::I32) => TypeId::I32,
                     (lhs, rhs) => {
                         panic!("cannot `{lhs}+{rhs}`")
                     }
@@ -283,7 +339,7 @@ impl TypeCheck for ast::Expr {
                     ctx.types.get(v.0.ty).unwrap(),
                     ctx.types.get(v.1.ty).unwrap(),
                 ) {
-                    (Type::I32, Type::I32) => self.ty = ctx.types.primitive(Type::I32),
+                    (Type::I32, Type::I32) => TypeId::I32,
                     (lhs, rhs) => {
                         panic!("cannot `{lhs}-{rhs}`")
                     }
@@ -297,7 +353,7 @@ impl TypeCheck for ast::Expr {
                     ctx.types.get(v.0.ty).unwrap(),
                     ctx.types.get(v.1.ty).unwrap(),
                 ) {
-                    (Type::I32, Type::I32) => self.ty = ctx.types.primitive(Type::I32),
+                    (Type::I32, Type::I32) => TypeId::I32,
                     (lhs, rhs) => {
                         panic!("cannot `{lhs}*{rhs}`")
                     }
@@ -311,7 +367,7 @@ impl TypeCheck for ast::Expr {
                     ctx.types.get(v.0.ty).unwrap(),
                     ctx.types.get(v.1.ty).unwrap(),
                 ) {
-                    (Type::I32, Type::I32) => self.ty = ctx.types.primitive(Type::I32),
+                    (Type::I32, Type::I32) => TypeId::I32,
                     (lhs, rhs) => {
                         panic!("cannot `{lhs}/{rhs}`")
                     }
@@ -331,11 +387,26 @@ impl TypeCheck for ast::Expr {
 
                 let func = ctx.funcs.get(func_id).unwrap();
 
+                assert_eq!(
+                    v.args().len(),
+                    func.args.len(),
+                    "argument count mismatch (got `{}`, expected `{}`)",
+                    v.args().len(),
+                    func.args.len(),
+                );
                 for (arg, arg_ty) in v.args().zip(func.args.iter().copied()) {
-                    assert_eq!(arg.ty, arg_ty);
+                    assert_eq!(
+                        arg.ty,
+                        arg_ty,
+                        "argument type mismatch (got `{}`, expected `{}`) {arg:#?}",
+                        TypeDisplay(ctx, arg.ty),
+                        TypeDisplay(ctx, arg_ty),
+                    );
                 }
 
-                self.ty = func.ret;
+                assert_ne!(func.ret, TypeId::Unknown);
+
+                func.ret
             }
         }
     }
@@ -345,6 +416,17 @@ impl TypeCheck for ast::Block {
     fn type_check(&mut self, ctx: &mut Context) {
         for stmt in self.stmts.iter_mut() {
             stmt.type_check(ctx);
+        }
+
+        self.ty = TypeId::Void;
+        if self.auto_return {
+            if let Some(last) = self.stmts.last() {
+                self.ty = match last {
+                    ast::Stmt::Init(_) => TypeId::Void,
+                    ast::Stmt::Expr(v) => v.expr.ty,
+                    ast::Stmt::Return(v) => v.expr.ty,
+                };
+            }
         }
     }
 }
@@ -364,51 +446,47 @@ impl TypeCheck for ast::Stmt {
     }
 }
 
-#[repr(transparent)]
-struct Partial<T>(T);
-
-impl AsRef<Partial<ast::Func>> for ast::Func {
-    fn as_ref(&self) -> &Partial<ast::Func> {
-        // SAFETY: `Partial<ast::Func>` is a repr(transparent) newtype wrapper around `ast::Func`,
-        // so the layout is guaranteed to be the exact same => the transmute is safe
-        unsafe { transmute::<&ast::Func, &Partial<ast::Func>>(self) }
-    }
+pub struct Proto<'a, Args> {
+    pub ty: TypeId,
+    pub return_ty: Option<&'a str>,
+    pub args: Args,
 }
 
-impl AsMut<Partial<ast::Func>> for ast::Func {
-    fn as_mut(&mut self) -> &mut Partial<ast::Func> {
-        // SAFETY: `Partial<ast::Func>` is a repr(transparent) newtype wrapper around `ast::Func`,
-        // so the layout is guaranteed to be the exact same => the transmute is safe
-        unsafe { transmute::<&mut ast::Func, &mut Partial<ast::Func>>(self) }
-    }
-}
-
-impl TypeCheck for Partial<ast::Func> {
+impl<'a, Args: Clone + ExactSizeIterator<Item = &'a ast::Argument>> TypeCheck for Proto<'a, Args> {
     fn type_check(&mut self, ctx: &mut Context) {
-        let ret = self.0.return_ty.as_ref().map_or(TypeId::NONE, |(_, ty)| {
-            ctx.types.lookup(&ty.value).expect("unknown type")
+        let ret = self.return_ty.map_or(TypeId::Unknown, |ty| {
+            ctx.types.lookup(ty).expect("unknown type")
         });
 
         let args: Vec<TypeId> = self
-            .0
             .args
-            .iter()
-            .flat_map(|args| args.iter())
+            .clone()
             .map(|arg| ctx.types.lookup(&arg.ty.value).expect("unknown type"))
             .collect();
 
         let func_id = ctx.funcs.push(Func { ret, args });
         let type_id = ctx.types.push(Type::Func(func_id));
 
-        self.0.ty = type_id;
+        self.ty = type_id;
     }
 }
 
 impl TypeCheck for ast::Func {
     fn type_check(&mut self, ctx: &mut Context) {
-        // TODO: run all Partial<ast::Func>::type_check functions before running the block code
+        // TODO: run all Proto::type_check functions before running the block code
         // to allow recursion and ordering the global scope in any way
-        self.as_mut().type_check(ctx);
+        self.ty = {
+            let mut proto = Proto {
+                ty: self.ty,
+                return_ty: self
+                    .return_ty
+                    .as_ref()
+                    .map(|(_, type_name)| type_name.value.as_str()),
+                args: self.args(),
+            };
+            proto.type_check(ctx);
+            proto.ty
+        };
 
         let type_id = self.ty;
 
@@ -420,7 +498,7 @@ impl TypeCheck for ast::Func {
 
         let func = ctx.funcs.get(func_id).unwrap();
 
-        ctx.vars.push();
+        ctx.vars.push(func.ret);
 
         for (arg, arg_type_id) in self
             .args
@@ -449,7 +527,7 @@ impl fmt::Display for Context {
         writeln!(f)?;
         writeln!(f, "types:")?;
         for (id, _) in self.types.types.iter().enumerate() {
-            writeln!(f, "{}", TypeDisplay(self, TypeId(id)))?;
+            writeln!(f, "{}", TypeDisplay(self, TypeId::Other(id as _)))?;
         }
 
         writeln!(f)?;
@@ -466,6 +544,7 @@ struct FuncDisplay<'a>(&'a Context, FuncId);
 
 impl fmt::Display for FuncDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // return Ok(());
         write!(f, "[anon_func_{}] (", self.1 .0)?;
         let func = self.0.funcs.get(self.1).unwrap();
         let mut iter = func.args.iter().copied();
@@ -483,6 +562,11 @@ struct TypeDisplay<'a>(&'a Context, TypeId);
 
 impl fmt::Display for TypeDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.1.is_unknown() {
+            return write!(f, "!not-typechecked!");
+        }
+
+        // return Ok(());
         let ty = self.0.types.get(self.1).unwrap();
         match ty {
             Type::I32 => write!(f, "i32")?,

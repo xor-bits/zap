@@ -202,7 +202,7 @@ impl<T: Parse> Parse for CommaSeparated<T> {
 }
 
 impl<T> CommaSeparated<T> {
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &T> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &T> + Clone {
         ChainOne {
             first: Some(&self.first),
             inner: self.inner.iter().map(|s| &s.item),
@@ -219,6 +219,7 @@ impl<T> CommaSeparated<T> {
 
 //
 
+#[derive(Clone)]
 pub struct ChainOne<I: Iterator> {
     first: Option<I::Item>,
     inner: I,
@@ -244,6 +245,7 @@ impl<I: ExactSizeIterator> ExactSizeIterator for ChainOne<I> {
 
 //
 
+#[derive(Clone)]
 pub struct OptionInner<I: Iterator> {
     inner: Option<I>,
 }
@@ -286,6 +288,7 @@ pub struct Test {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
+    pub ty: TypeId,
     pub open: LBrace,
     pub stmts: Vec<Stmt>,
     pub auto_return: bool,
@@ -315,6 +318,7 @@ impl Parse for Block {
                 }
 
                 return Ok(Self {
+                    ty: TypeId::Unknown,
                     open,
                     stmts,
                     auto_return: true,
@@ -325,6 +329,7 @@ impl Parse for Block {
         let close = tokens.parse()?;
 
         Ok(Self {
+            ty: TypeId::Unknown,
             open,
             stmts,
             auto_return: false,
@@ -422,7 +427,7 @@ pub enum AnyExpr {
 impl From<AnyExpr> for Expr {
     fn from(expr: AnyExpr) -> Self {
         Self {
-            ty: TypeId::NONE,
+            ty: TypeId::Unknown,
             expr,
         }
     }
@@ -569,6 +574,20 @@ pub struct Func {
     pub block: Block,
 }
 
+impl Func {
+    pub fn args(&self) -> impl ExactSizeIterator<Item = &Argument> + Clone {
+        OptionInner {
+            inner: self.args.as_ref().map(|s| s.iter()),
+        }
+    }
+
+    pub fn args_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Argument> {
+        OptionInner {
+            inner: self.args.as_mut().map(|s| s.iter_mut()),
+        }
+    }
+}
+
 impl Parse for Func {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let fn_kw = tokens.parse()?;
@@ -597,7 +616,7 @@ impl Parse for Func {
         let block = tokens.parse()?;
 
         Ok(Func {
-            ty: TypeId::NONE,
+            ty: TypeId::Unknown,
             fn_kw,
             args_beg: _args_beg,
             args,

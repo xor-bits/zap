@@ -6,7 +6,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytecode.path = "../bytecode"
 parser.path = "../parser"
+typeck.path = "../typeck"
 
 inkwell = { version = "0.3", features = ["llvm17-0"] }

@@ -30,21 +30,69 @@ impl fmt::Display for Error {
 
 //
 
+pub trait AsTypeId {
+    const TYPE_ID: TypeId;
+}
+
+impl AsTypeId for i32 {
+    const TYPE_ID: TypeId = TypeId::I32;
+}
+
+impl AsTypeId for () {
+    const TYPE_ID: TypeId = TypeId::Void;
+}
+
+//
+
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TypeId(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum TypeId {
+    I32,
+    Void,
+    #[default]
+    Unknown,
+    Other(u32),
+}
 
 impl TypeId {
-    pub const NONE: Self = Self(usize::MAX);
+    pub fn from_type<T: AsTypeId>() -> Self {
+        T::TYPE_ID
+    }
 
-    pub const fn is_none(self) -> bool {
-        self.0 == Self::NONE.0
+    /// Returns `true` if the type id is [`I32`].
+    ///
+    /// [`I32`]: TypeId::I32
+    #[must_use]
+    pub fn is_i32(&self) -> bool {
+        matches!(self, Self::I32)
+    }
+
+    /// Returns `true` if the type id is [`Void`].
+    ///
+    /// [`Void`]: TypeId::Void
+    #[must_use]
+    pub fn is_void(&self) -> bool {
+        matches!(self, Self::Void)
+    }
+
+    /// Returns `true` if the type id is [`Unknown`].
+    ///
+    /// [`Unknown`]: TypeId::Unknown
+    #[must_use]
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
     }
 }
 
 impl fmt::Display for TypeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}]", self.0)
+        match self {
+            TypeId::I32 => write!(f, "i32"),
+            TypeId::Void => write!(f, "void"),
+            TypeId::Unknown => write!(f, "unknown"),
+            TypeId::Other(id) => write!(f, "[{id}]"),
+        }
     }
 }
 
