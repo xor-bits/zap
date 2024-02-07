@@ -125,6 +125,10 @@ impl Vars {
             .init(var, ty)
     }
 
+    pub fn return_ty(&self) -> TypeId {
+        self.scopes.last().unwrap_or(&self.global_scope).return_ty
+    }
+
     pub fn push(&mut self, return_ty: TypeId) {
         self.scopes.push(Scope {
             vars: None,
@@ -166,14 +170,14 @@ impl Funcs {
 #[derive(Debug)]
 pub struct Types {
     types: Vec<Type>,
-    typename_lookup: Option<HashMap<Rc<str>, TypeId>>,
+    // typename_lookup: Option<HashMap<Rc<str>, TypeId>>,
 }
 
 impl Types {
     pub const fn new() -> Self {
         Self {
             types: Vec::new(),
-            typename_lookup: None,
+            // typename_lookup: None,
         }
     }
 
@@ -444,7 +448,10 @@ impl TypeCheck for ast::Stmt {
                 }
             }
             ast::Stmt::Expr(v) => v.expr.type_check(ctx),
-            ast::Stmt::Return(v) => v.expr.type_check(ctx),
+            ast::Stmt::Return(v) => {
+                v.expr.type_check(ctx);
+                assert_eq!(v.expr.ty, ctx.vars.return_ty(), "invalid return type");
+            }
         }
     }
 }
@@ -513,6 +520,7 @@ impl TypeCheck for ast::Func {
         }
 
         self.block.type_check(ctx);
+        assert_eq!(self.block.ty, ctx.vars.return_ty(), "invalid return type");
 
         ctx.vars.pop();
     }

@@ -137,6 +137,12 @@ pub struct Resolver<'a> {
     labels: HashMap<&'a str, LabelState>,
 }
 
+impl<'a> Default for Resolver<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Resolver<'a> {
     pub fn new() -> Self {
         Self {

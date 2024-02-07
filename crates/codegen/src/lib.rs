@@ -8,15 +8,13 @@ use llvm::{
     builder::Builder,
     context::Context,
     execution_engine::ExecutionEngine,
-    module::{Linkage, Module},
-    types::BasicType,
+    module::Module,
     values::{
-        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue,
-        StructValue,
+        AnyValue, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, StructValue,
     },
     AddressSpace, OptimizationLevel,
 };
-use parser::{ast, AsTypeId, TypeId};
+use parser::ast;
 use typeck::{Func, TypeCheck};
 
 use crate::types::get_or_init_struct;
@@ -111,7 +109,7 @@ impl ModuleGen {
         match self.statics.entry(name.into()) {
             Entry::Occupied(_) => return Err(Error::StaticRedefined(name.into())),
             Entry::Vacant(entry) => entry.insert(Value::Func(FuncValue {
-                data: None,
+                // data: None,
                 fn_ptr: wrapper_ptr,
             })),
         };
@@ -202,7 +200,7 @@ enum Value {
 
 #[derive(Clone)]
 struct FuncValue {
-    data: Option<Box<Value>>,
+    // data: Option<Box<Value>>,
     fn_ptr: FunctionValue<'static>,
 }
 
@@ -315,7 +313,7 @@ impl EmitIr for ast::Func {
         }
 
         Ok(FuncValue {
-            data: None,
+            // data: None,
             fn_ptr: fn_val,
         })
     }

@@ -6,7 +6,7 @@ fn main() {
     let str = r#"  
         main := fn() -> i32 {
             print("Hello, world!");
-            return 0;
+            0
         }
     "#;
 

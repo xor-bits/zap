@@ -2,11 +2,7 @@ use std::{slice, str};
 
 use inkwell::{
     context::Context,
-    targets::{InitializationConfig, Target},
-    types::{
-        AnyTypeEnum, ArrayType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType,
-        FunctionType, IntType, MetadataType, PointerType, StructType, VectorType, VoidType,
-    },
+    types::{BasicMetadataTypeEnum, FunctionType, StructType},
     AddressSpace,
 };
 use parser::{AsTypeId, TypeId};
@@ -112,7 +108,7 @@ impl AsLlvm for TypeId {
             Type::I32 => ctx.i32_type().fn_type(param_types, is_var_args),
             Type::Str => todo!(),
             Type::Void => ctx.void_type().fn_type(param_types, is_var_args),
-            Type::Func(f) => ctx.void_type().fn_type(param_types, is_var_args),
+            Type::Func(_f) => ctx.void_type().fn_type(param_types, is_var_args),
         }
     }
 
@@ -134,7 +130,7 @@ impl AsLlvm for TypeId {
                 .into(),
             ),
             Type::Void => None,
-            Type::Func(func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
+            Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }
 }
@@ -144,10 +140,10 @@ pub fn get_or_init_struct<'a>(
     name: &str,
     setup_body: impl FnOnce(StructType<'a>),
 ) -> StructType<'a> {
-    if let Some(s) = ctx.get_struct_type(&name) {
+    if let Some(s) = ctx.get_struct_type(name) {
         s
     } else {
-        let s = ctx.opaque_struct_type(&name);
+        let s = ctx.opaque_struct_type(name);
         setup_body(s);
         s
     }
