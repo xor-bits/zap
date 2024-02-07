@@ -1,6 +1,5 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    mem::transmute,
     rc::Rc,
 };
 
@@ -22,11 +21,9 @@ use typeck::{Func, TypeCheck};
 
 use crate::types::get_or_init_struct;
 
-use self::types::{AsLlvm, FnAsLlvm};
-
 //
 
-pub use types::Str;
+pub use types::{AsLlvm, FnAsLlvm, Str};
 
 //
 

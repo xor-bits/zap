@@ -7,4 +7,5 @@ edition.workspace = true
 
 [dependencies]
 codegen.path = "../codegen"
+lexer.path = "../lexer"
 parser.path = "../parser"
