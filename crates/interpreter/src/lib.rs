@@ -318,7 +318,7 @@ impl Execute for ast::Root {
 impl Execute for ast::RootItem {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
         match self {
-            ast::RootItem::Init(init) => init.exec(vars),
+            ast::RootItem::Init(init) => todo!(),
             ast::RootItem::Test(_) => todo!(),
         }
     }
@@ -328,7 +328,7 @@ impl Execute for ast::Init {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
         assert_eq!(self.targets.inner.len(), self.exprs.inner.len());
 
-        fn exec_one(target: &ast::Target, expr: &ast::Expr, vars: &mut Vars) -> Result<()> {
+        fn exec_one(target: &ast::Target, expr: &ast::AnyExpr, vars: &mut Vars) -> Result<()> {
             let v = expr.exec(vars)?;
             vars.init(target.path.ident.value.as_str().into(), v);
             Ok(())
@@ -342,15 +342,15 @@ impl Execute for ast::Init {
     }
 }
 
-impl Execute for ast::Expr {
+impl Execute for ast::AnyExpr {
     fn exec(&self, vars: &mut Vars) -> Result<Value> {
         match self {
-            ast::Expr::Block(block) => block.exec(vars),
-            ast::Expr::LitInt(lit) => Ok(Value::Int(lit.value)),
-            ast::Expr::LitStr(lit) => Ok(Value::Str(lit.value.as_str().into())),
-            ast::Expr::Load(load) => vars.load(&load.value).ok_or(Error::VarNotFound),
-            ast::Expr::Func(func) => Ok(Value::Func(func.clone().into())),
-            ast::Expr::Add(add) => {
+            ast::AnyExpr::Block(block) => block.exec(vars),
+            ast::AnyExpr::LitInt(lit) => Ok(Value::Int(lit.value)),
+            ast::AnyExpr::LitStr(lit) => Ok(Value::Str(lit.value.as_str().into())),
+            ast::AnyExpr::Load(load) => vars.load(&load.value).ok_or(Error::VarNotFound),
+            ast::AnyExpr::Func(func) => Ok(Value::Func(func.clone().into())),
+            ast::AnyExpr::Add(add) => {
                 let lhs = add.0.exec(vars)?;
                 let rhs = add.1.exec(vars)?;
 
@@ -367,7 +367,7 @@ impl Execute for ast::Expr {
                     }
                 }
             }
-            ast::Expr::Sub(sub) => {
+            ast::AnyExpr::Sub(sub) => {
                 let lhs = sub.0.exec(vars)?;
                 let rhs = sub.1.exec(vars)?;
 
@@ -378,7 +378,7 @@ impl Execute for ast::Expr {
                     }
                 }
             }
-            ast::Expr::Mul(mul) => {
+            ast::AnyExpr::Mul(mul) => {
                 let lhs = mul.0.exec(vars)?;
                 let rhs = mul.1.exec(vars)?;
 
@@ -389,7 +389,7 @@ impl Execute for ast::Expr {
                     }
                 }
             }
-            ast::Expr::Div(div) => {
+            ast::AnyExpr::Div(div) => {
                 let lhs = div.0.exec(vars)?;
                 let rhs = div.1.exec(vars)?;
 
@@ -400,7 +400,7 @@ impl Execute for ast::Expr {
                     }
                 }
             }
-            ast::Expr::Call(call) => call.exec(vars),
+            ast::AnyExpr::Call(call) => call.exec(vars),
         }
     }
 }

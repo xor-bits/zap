@@ -1,4 +1,4 @@
-use crate::{unexpected, Parse, ParseStream, Result, Token};
+use crate::{unexpected, Parse, ParseStream, Result, Token, TypeId};
 use macros::Parse;
 
 use token::*;
@@ -12,6 +12,48 @@ pub mod token;
 
 //
 
+// pub trait AstDisplay: Sized {
+//     fn ast_display(&self) -> AsAstDisplay<Self> {
+//         AsAstDisplay { v: self }
+//     }
+
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result;
+// }
+
+//
+
+// pub struct AsAstDisplay<'a, T> {
+//     v: &'a T,
+// }
+
+// impl<T: AstDisplay> fmt::Display for AsAstDisplay<'_, T> {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         self.v.fmt(f, Indent(0))
+//     }
+// }
+
+//
+
+// pub struct Indent(usize);
+
+// impl Indent {
+//     pub const fn push(&mut self) {
+//         self.0 += 1;
+//     }
+
+//     pub const fn pop(&mut self) {
+//         self.0 -= 1;
+//     }
+// }
+
+// impl fmt::Display for Indent {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "{: <1$}", "", self.0)
+//     }
+// }
+
+//
+
 /// any part of the grammar, but terminated with EOI
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Parse)]
@@ -19,6 +61,12 @@ pub struct Ast<T> {
     pub inner: T,
     pub eoi: Eoi,
 }
+
+// impl<T: AstDisplay> AstDisplay for Ast<T> {
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
+//         self.inner.fmt(f, i)
+//     }
+// }
 
 //
 
@@ -47,6 +95,16 @@ impl Parse for Root {
     }
 }
 
+// impl AstDisplay for Root {
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
+//         for item in self.inner.iter() {
+//             item.fmt(f, i)?;
+//         }
+
+//         Ok(())
+//     }
+// }
+
 //
 
 #[cfg_attr(test, derive(Serialize))]
@@ -69,6 +127,15 @@ impl Parse for RootItem {
     }
 }
 
+// impl AstDisplay for RootItem {
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
+//         match self {
+//             RootItem::Init(v) => v.fmt(f, i),
+//             RootItem::Test(v) => v.fmt(f, i),
+//         }
+//     }
+// }
+
 //
 
 #[cfg_attr(test, derive(Serialize))]
@@ -78,6 +145,21 @@ pub struct RootInit {
     pub walrus: Walrus,
     pub exprs: CommaSeparated<Expr>,
 }
+
+// impl AstDisplay for RootInit {
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
+//         for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
+//             write!(f, "{}", target.path.ident.value)?;
+//             if !expr.ty.is_none() {
+//                 write!(f, ": <{}>", expr.ty.0)?;
+//             }
+//             write!(f, " := ")?;
+//             expr.fmt(f, i)?;
+//         }
+
+//         Ok(())
+//     }
+// }
 
 //
 
@@ -120,38 +202,63 @@ impl<T: Parse> Parse for CommaSeparated<T> {
 }
 
 impl<T> CommaSeparated<T> {
-    pub fn iter(&self) -> CommaSeparatedIter<T> {
-        CommaSeparatedIter {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &T> {
+        ChainOne {
             first: Some(&self.first),
-            inner: &self.inner[..],
+            inner: self.inner.iter().map(|s| &s.item),
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut T> {
+        ChainOne {
+            first: Some(&mut self.first),
+            inner: self.inner.iter_mut().map(|s| &mut s.item),
         }
     }
 }
 
 //
 
-pub struct CommaSeparatedIter<'a, T> {
-    first: Option<&'a T>,
-    inner: &'a [CommaSeparatedItem<T>],
+pub struct ChainOne<I: Iterator> {
+    first: Option<I::Item>,
+    inner: I,
 }
 
-impl<'a, T> Iterator for CommaSeparatedIter<'a, T> {
-    type Item = &'a T;
+impl<I: Iterator> Iterator for ChainOne<I> {
+    type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(first) = self.first.take() {
             return Some(first);
         }
 
-        let (first, inner) = self.inner.split_first()?;
-        self.inner = inner;
-        Some(&first.item)
+        self.inner.next()
     }
 }
 
-impl<'a, T> ExactSizeIterator for CommaSeparatedIter<'a, T> {
+impl<I: ExactSizeIterator> ExactSizeIterator for ChainOne<I> {
     fn len(&self) -> usize {
         self.inner.len() + if self.first.is_some() { 1 } else { 0 }
+    }
+}
+
+//
+
+pub struct OptionInner<I: Iterator> {
+    inner: Option<I>,
+}
+
+impl<I: Iterator> Iterator for OptionInner<I> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.as_mut()?.next()
+    }
+}
+
+impl<I: ExactSizeIterator> ExactSizeIterator for OptionInner<I> {
+    fn len(&self) -> usize {
+        self.inner.as_ref().map_or(0, |i| i.len())
     }
 }
 
@@ -282,7 +389,22 @@ pub struct StmtExpr {
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr {
+pub struct Expr {
+    pub ty: TypeId,
+    pub expr: AnyExpr,
+}
+
+// impl AstDisplay for Expr {
+//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
+
+//     }
+// }
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnyExpr {
     Block(Box<Block>),
     LitInt(LitInt),
     LitStr(LitStr),
@@ -297,6 +419,15 @@ pub enum Expr {
     Call(Box<Call>),
 }
 
+impl From<AnyExpr> for Expr {
+    fn from(expr: AnyExpr) -> Self {
+        Self {
+            ty: TypeId::NONE,
+            expr,
+        }
+    }
+}
+
 impl Expr {
     fn parse_math_expr(tokens: &mut ParseStream) -> Result<Self> {
         let mut lhs: Self = Self::parse_math_term(tokens)?;
@@ -305,11 +436,11 @@ impl Expr {
             let is_add = tokens.next_token()?.token() == Token::Plus;
 
             let expr = Box::new((lhs, Self::parse_math_term(tokens)?));
-            if is_add {
-                lhs = Self::Add(expr);
+            lhs = Self::from(if is_add {
+                AnyExpr::Add(expr)
             } else {
-                lhs = Self::Sub(expr);
-            }
+                AnyExpr::Sub(expr)
+            });
         }
 
         Ok(lhs)
@@ -322,11 +453,11 @@ impl Expr {
             let is_mul = tokens.next_token()?.token() == Token::Asterisk;
 
             let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
-            if is_mul {
-                lhs = Self::Mul(expr);
+            lhs = Self::from(if is_mul {
+                AnyExpr::Mul(expr)
             } else {
-                lhs = Self::Div(expr);
-            }
+                AnyExpr::Div(expr)
+            });
         }
 
         Ok(lhs)
@@ -347,24 +478,25 @@ impl Expr {
 
             let args_end: token::RParen = tokens.parse()?;
 
-            lhs = Self::Call(Box::new(Call {
+            lhs = AnyExpr::Call(Box::new(Call {
                 func,
                 args_beg,
                 args,
                 args_end,
             }))
+            .into()
         }
 
-        while tokens.peek1(Token::LParen) {
-            let is_mul = tokens.peek1(Token::Asterisk);
+        // while tokens.peek1(Token::LParen) {
+        //     let is_mul = tokens.peek1(Token::Asterisk);
 
-            let expr = Box::new((lhs, Self::parse_math_atom(tokens)?));
-            if is_mul {
-                lhs = Self::Add(expr);
-            } else {
-                lhs = Self::Sub(expr);
-            }
-        }
+        //     let expr = Box::new((lhs, Self::parse_math_atom(tokens)?));
+        //     if is_mul {
+        //         lhs = Self::Add(expr);
+        //     } else {
+        //         lhs = Self::Sub(expr);
+        //     }
+        // }
 
         Ok(lhs)
     }
@@ -372,20 +504,20 @@ impl Expr {
     fn parse_math_atom(tokens: &mut ParseStream) -> Result<Self> {
         let mut look = tokens.look1();
         if look.peek(Token::LBrace) {
-            Ok(Self::Block(tokens.parse()?))
+            Ok(AnyExpr::Block(tokens.parse()?).into())
         } else if look.peek(Token::LitInt) {
-            Ok(Self::LitInt(tokens.parse()?))
+            Ok(AnyExpr::LitInt(tokens.parse()?).into())
         } else if look.peek(Token::LitStr) {
-            Ok(Self::LitStr(tokens.parse()?))
+            Ok(AnyExpr::LitStr(tokens.parse()?).into())
         } else if look.peek(Token::Ident) {
-            Ok(Self::Load(tokens.parse()?))
+            Ok(AnyExpr::Load(tokens.parse()?).into())
         } else if look.peek(Token::LParen) {
             let _: token::LParen = tokens.parse()?;
-            let expr = tokens.parse()?;
+            let expr: Expr = tokens.parse()?;
             let _: token::RParen = tokens.parse()?;
             Ok(expr)
         } else if look.peek(Token::Fn) {
-            Ok(Self::Func(tokens.parse()?))
+            Ok(AnyExpr::Func(tokens.parse()?).into())
         } else {
             Err(look.err())
         }
@@ -409,11 +541,26 @@ pub struct Call {
     pub args_end: token::RParen,
 }
 
+impl Call {
+    pub fn args(&self) -> impl ExactSizeIterator<Item = &Expr> {
+        OptionInner {
+            inner: self.args.as_ref().map(|s| s.iter()),
+        }
+    }
+
+    pub fn args_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Expr> {
+        OptionInner {
+            inner: self.args.as_mut().map(|s| s.iter_mut()),
+        }
+    }
+}
+
 //
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
+    pub ty: TypeId,
     pub fn_kw: token::Fn,
     pub args_beg: token::LParen,
     pub args: Option<CommaSeparated<Argument>>,
@@ -450,6 +597,7 @@ impl Parse for Func {
         let block = tokens.parse()?;
 
         Ok(Func {
+            ty: TypeId::NONE,
             fn_kw,
             args_beg: _args_beg,
             args,

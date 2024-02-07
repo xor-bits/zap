@@ -2,6 +2,9 @@ use std::{collections::VecDeque, fmt, iter::Filter};
 
 use lexer::{Lexer, SpannedToken, Token};
 
+#[cfg(test)]
+use serde::Serialize;
+
 //
 
 pub mod ast;
@@ -22,6 +25,26 @@ impl fmt::Display for Error {
             Error::Lexer(err) => fmt::Display::fmt(err, f),
             Error::UnexpectedToken(tok) => write!(f, "unexpected token {tok}"),
         }
+    }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeId(pub usize);
+
+impl TypeId {
+    pub const NONE: Self = Self(usize::MAX);
+
+    pub const fn is_none(self) -> bool {
+        self.0 == Self::NONE.0
+    }
+}
+
+impl fmt::Display for TypeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}]", self.0)
     }
 }
 

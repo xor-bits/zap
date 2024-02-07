@@ -19,6 +19,10 @@ use parser::ast;
 
 //
 
+mod types;
+
+//
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone)]
@@ -199,7 +203,7 @@ impl EmitIr for ast::RootInit {
             gen.namespace.push_str(var_name);
 
             let v = match expr {
-                ast::Expr::Func(f) => Value::Func(f.emit_ir(gen)?),
+                ast::AnyExpr::Func(f) => Value::Func(f.emit_ir(gen)?),
                 expr => expr.eval()?.emit_ir(gen)?,
             };
 
@@ -342,18 +346,18 @@ impl EmitIr for ast::Init {
     }
 }
 
-impl EmitIr for ast::Expr {
+impl EmitIr for ast::AnyExpr {
     type Val = Value;
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
         match self {
-            ast::Expr::Block(_) => todo!(),
-            ast::Expr::LitInt(v) => {
+            ast::AnyExpr::Block(_) => todo!(),
+            ast::AnyExpr::LitInt(v) => {
                 let val = gen.ctx.i32_type().const_int(v.value as u64, false);
                 Ok(Value::I32(val))
             }
-            ast::Expr::LitStr(_) => todo!(),
-            ast::Expr::Load(var) => {
+            ast::AnyExpr::LitStr(_) => todo!(),
+            ast::AnyExpr::Load(var) => {
                 if let Some(locals) = gen.locals.last() {
                     if let Some(val) = locals.get(var.value.as_str()).cloned() {
                         return Ok(val);
@@ -366,8 +370,8 @@ impl EmitIr for ast::Expr {
 
                 Err(Error::VariableNotFound(var.value.clone()))
             }
-            ast::Expr::Func(_) => todo!(),
-            ast::Expr::Add(add) => {
+            ast::AnyExpr::Func(_) => todo!(),
+            ast::AnyExpr::Add(add) => {
                 let lhs = add.0.emit_ir(gen)?;
                 let rhs = add.1.emit_ir(gen)?;
 
@@ -381,10 +385,10 @@ impl EmitIr for ast::Expr {
                     }
                 }
             }
-            ast::Expr::Sub(_) => todo!(),
-            ast::Expr::Mul(_) => todo!(),
-            ast::Expr::Div(_) => todo!(),
-            ast::Expr::Call(call) => {
+            ast::AnyExpr::Sub(_) => todo!(),
+            ast::AnyExpr::Mul(_) => todo!(),
+            ast::AnyExpr::Div(_) => todo!(),
+            ast::AnyExpr::Call(call) => {
                 let func = call.func.emit_ir(gen)?;
                 let func = match func {
                     Value::Func(f) => f,
@@ -447,31 +451,31 @@ pub trait ConstEval {
     fn eval(&self) -> Result<Self::Val>;
 }
 
-impl ConstEval for ast::Expr {
+impl ConstEval for ast::AnyExpr {
     type Val = ConstValue;
 
     fn eval(&self) -> Result<Self::Val> {
         match self {
-            ast::Expr::Block(block) => block.eval(),
-            ast::Expr::LitInt(i) => Ok(ConstValue::I32(i.value as _)),
-            ast::Expr::LitStr(_) => todo!(),
-            ast::Expr::Load(_) => todo!(),
-            ast::Expr::Func(_) => todo!(),
-            ast::Expr::Add(sides) => match sides.eval()? {
+            ast::AnyExpr::Block(block) => block.eval(),
+            ast::AnyExpr::LitInt(i) => Ok(ConstValue::I32(i.value as _)),
+            ast::AnyExpr::LitStr(_) => todo!(),
+            ast::AnyExpr::Load(_) => todo!(),
+            ast::AnyExpr::Func(_) => todo!(),
+            ast::AnyExpr::Add(sides) => match sides.eval()? {
                 (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
                     Ok(ConstValue::I32(lhs.wrapping_add(rhs)))
                 }
                 _ => todo!(),
             },
-            ast::Expr::Sub(_) => todo!(),
-            ast::Expr::Mul(sides) => match sides.eval()? {
+            ast::AnyExpr::Sub(_) => todo!(),
+            ast::AnyExpr::Mul(sides) => match sides.eval()? {
                 (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
                     Ok(ConstValue::I32(lhs.wrapping_mul(rhs)))
                 }
                 _ => todo!(),
             },
-            ast::Expr::Div(_) => todo!(),
-            ast::Expr::Call(_) => todo!(),
+            ast::AnyExpr::Div(_) => todo!(),
+            ast::AnyExpr::Call(_) => todo!(),
         }
     }
 }
