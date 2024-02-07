@@ -21,9 +21,10 @@ pub struct Func {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     I32,
+    Str,
+    Void,
     Func(FuncId),
     // ExternFunc, // a function that can take any arguments
-    Void,
 }
 
 impl Type {
@@ -39,8 +40,9 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::I32 => write!(f, "i32"),
-            Type::Func(id) => write!(f, "[{}]", id.0),
+            Type::Str => write!(f, "str"),
             Type::Void => write!(f, "void"),
+            Type::Func(id) => write!(f, "[{}]", id.0),
         }
     }
 }
@@ -178,6 +180,7 @@ impl Types {
     pub fn get(&self, id: TypeId) -> Option<&Type> {
         match id {
             TypeId::I32 => Some(&Type::I32),
+            TypeId::Str => Some(&Type::Str),
             TypeId::Void => Some(&Type::Void),
             TypeId::Unknown => unreachable!(),
             TypeId::Other(id) => self.types.get(id as usize),
@@ -308,7 +311,7 @@ impl TypeCheck for ast::Expr {
                 v.ty
             }
             ast::AnyExpr::LitInt(_) => TypeId::I32,
-            ast::AnyExpr::LitStr(_) => todo!(),
+            ast::AnyExpr::LitStr(_) => TypeId::Str,
             ast::AnyExpr::Load(v) => ctx
                 .vars
                 .get(&v.value)
@@ -570,8 +573,9 @@ impl fmt::Display for TypeDisplay<'_> {
         let ty = self.0.types.get(self.1).unwrap();
         match ty {
             Type::I32 => write!(f, "i32")?,
-            Type::Func(v) => write!(f, "<{}>", FuncDisplay(self.0, *v))?,
+            Type::Str => write!(f, "str")?,
             Type::Void => write!(f, "void")?,
+            Type::Func(v) => write!(f, "<{}>", FuncDisplay(self.0, *v))?,
         }
         Ok(())
     }

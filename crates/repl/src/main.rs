@@ -1,60 +1,17 @@
 use std::process::exit;
 
-use codegen::CodeGen;
+use codegen::{CodeGen, Str};
 use lexer::Lexer;
 use parser::{ast, Parse, ParseStream};
-use typeck::{Context, TypeCheck};
 
 //
 
 fn main() {
     let str = r#"  
-        const := { 1 + 2 * 3 };
-
-        add := fn(a: i32, b: i32) -> i32 {
-            return a + b;
-        }
-    
         main := fn() -> i32 {
-            print();
-            return sum(add(4, const), 4);
+            print("Hello, world!");
+            return 0;
         }
-
-        typeck_a := fn() -> i32 {
-            return 4 * add(2, 5) - 2;
-        }
-        // should turn into this:
-        // typeck_b := fn() -> i32 {
-        //     _0: i32 := 4;
-        //     _1: impl Fn(i32,i32)->i32 := add;
-        //     _1: i32 := _1.call(2, 5);
-        //     _2: i32 := tmp_0 * tmp_1;
-        //     _3: i32 := 2;
-        //     _4: i32 := tmp_2 - tmp_3;
-        //     return tmp_4;
-        // }
-
-        // add := fn(a: i32, b: i32) -> i32 {
-        //     a + b
-        // };
-
-        // fn_factory := fn() -> i32 {
-        //     fn(a: i32, b: i32) -> i32 {
-        //         a + b
-        //     }
-        // };
-
-        // main := fn() -> i32 {
-        //     print("Hello world ", add(const, const));
-        //     print("const = " + const);
-        //     print("str con" + "cat");
-
-        //     tmp := fn_factory();
-
-        //     print("tmp: " + tmp(5, 6));
-    
-        //     return 0;
-        // };
     "#;
     // println!("{str}");
 
@@ -76,7 +33,7 @@ fn main() {
     let mut codegen = CodeGen::new();
     let mut module = codegen.module();
     module
-        .add_extern("print", print as extern "C" fn())
+        .add_extern("print", print as extern "C" fn(Str))
         .unwrap();
     module
         .add_extern("sum", sum as extern "C" fn(i32, i32) -> i32)
@@ -84,8 +41,8 @@ fn main() {
     module.add(ast).unwrap();
     let val = module.run().unwrap();
 
-    extern "C" fn print() {
-        println!("called print");
+    extern "C" fn print(s: Str) {
+        println!("called print `{}`", s.as_str());
     }
 
     extern "C" fn sum(a: i32, b: i32) -> i32 {

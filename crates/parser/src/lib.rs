@@ -49,6 +49,7 @@ impl AsTypeId for () {
 #[repr(u8)]
 pub enum TypeId {
     I32,
+    Str,
     Void,
     #[default]
     Unknown,
@@ -89,6 +90,7 @@ impl fmt::Display for TypeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TypeId::I32 => write!(f, "i32"),
+            TypeId::Str => write!(f, "str"),
             TypeId::Void => write!(f, "void"),
             TypeId::Unknown => write!(f, "unknown"),
             TypeId::Other(id) => write!(f, "[{id}]"),

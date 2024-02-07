@@ -1,14 +1,37 @@
+use std::{slice, str};
+
 use inkwell::{
     context::Context,
+    targets::{InitializationConfig, Target},
     types::{
         AnyTypeEnum, ArrayType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType,
         FunctionType, IntType, MetadataType, PointerType, StructType, VectorType, VoidType,
     },
+    AddressSpace,
 };
 use parser::{AsTypeId, TypeId};
 use typeck::Type;
 
-use crate::context;
+use crate::{context, ModuleGen};
+
+//
+
+#[repr(C)]
+pub struct Str {
+    len: usize,
+    ptr: *const u8,
+}
+
+impl Str {
+    pub fn as_str(&self) -> &str {
+        let str_slice = unsafe { slice::from_raw_parts(self.ptr, self.len) };
+        str::from_utf8(str_slice).unwrap()
+    }
+}
+
+impl AsTypeId for Str {
+    const TYPE_ID: TypeId = TypeId::Str;
+}
 
 //
 
@@ -69,64 +92,64 @@ pub trait AsLlvm {
 
     fn as_llvm_fn(
         &self,
-        types: &typeck::Context,
+        gen: &ModuleGen,
         param_types: &[BasicMetadataTypeEnum<'static>],
         is_var_args: bool,
     ) -> FunctionType<'static>;
 
-    fn as_llvm_meta(&self, types: &typeck::Context) -> Option<BasicMetadataTypeEnum<'static>>;
+    fn as_llvm_meta(&self, gen: &ModuleGen) -> Option<BasicMetadataTypeEnum<'static>>;
 }
 
 impl AsLlvm for TypeId {
     fn as_llvm_fn(
         &self,
-        types: &typeck::Context,
+        gen: &ModuleGen,
         param_types: &[BasicMetadataTypeEnum<'static>],
         is_var_args: bool,
     ) -> FunctionType<'static> {
         let ctx = context();
-        match types.get_type(*self) {
+        match gen.types.get_type(*self) {
             Type::I32 => ctx.i32_type().fn_type(param_types, is_var_args),
+            Type::Str => todo!(),
             Type::Void => ctx.void_type().fn_type(param_types, is_var_args),
             Type::Func(f) => ctx.void_type().fn_type(param_types, is_var_args),
         }
     }
 
-    fn as_llvm_meta(&self, types: &typeck::Context) -> Option<BasicMetadataTypeEnum<'static>> {
+    fn as_llvm_meta(&self, gen: &ModuleGen) -> Option<BasicMetadataTypeEnum<'static>> {
         let ctx = context();
-        match types.get_type(*self) {
+        match gen.types.get_type(*self) {
             Type::I32 => Some(ctx.i32_type().into()),
+            Type::Str => Some(
+                get_or_init_struct(ctx, "str", |s| {
+                    s.set_body(
+                        &[
+                            ctx.ptr_sized_int_type(gen.engine.get_target_data(), None)
+                                .into(),
+                            ctx.i8_type().ptr_type(AddressSpace::default()).into(),
+                        ],
+                        false,
+                    );
+                })
+                .into(),
+            ),
             Type::Void => None,
             Type::Func(func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }
 }
 
-fn get_or_init_struct<'a>(ctx: &'a Context, name: &str) -> StructType<'a> {
+pub fn get_or_init_struct<'a>(
+    ctx: &'a Context,
+    name: &str,
+    setup_body: impl FnOnce(StructType<'a>),
+) -> StructType<'a> {
     if let Some(s) = ctx.get_struct_type(&name) {
         s
     } else {
         let s = ctx.opaque_struct_type(&name);
-        s.set_body(&[], false);
+        setup_body(s);
         s
-    }
-}
-
-//
-
-pub trait TypeAsLlvm {
-    fn as_llvm() -> BasicTypeEnum<'static>;
-}
-
-impl TypeAsLlvm for () {
-    fn as_llvm() -> BasicTypeEnum<'static> {
-        get_or_init_struct(context(), "void").into()
-    }
-}
-
-impl TypeAsLlvm for i32 {
-    fn as_llvm() -> BasicTypeEnum<'static> {
-        context().i32_type().into()
     }
 }
 
