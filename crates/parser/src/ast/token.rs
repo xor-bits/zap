@@ -123,6 +123,9 @@ simple_tokens! {
     /// `fn`
     Fn,
 
+    /// `for`
+    For,
+
     /// `return`
     Return,
 

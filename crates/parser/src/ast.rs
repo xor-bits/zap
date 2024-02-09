@@ -345,6 +345,7 @@ impl Parse for Block {
 pub enum Stmt {
     Init(Init),
     Set(Set),
+    Loop(Loop),
     Expr(StmtExpr),
     Return(Return),
 }
@@ -371,10 +372,20 @@ impl Parse for Stmt {
                     }))
                 }
             }
+            (Some(Token::For), _) => Ok(Self::Loop(tokens.parse()?)),
             (Some(Token::Return), _) => Ok(Self::Return(tokens.parse()?)),
             _ => Ok(Self::Expr(tokens.parse()?)),
         }
     }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct Loop {
+    pub for_token: For,
+    pub block: Block,
 }
 
 //

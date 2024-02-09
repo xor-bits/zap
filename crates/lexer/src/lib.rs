@@ -122,6 +122,9 @@ pub enum Token {
     /// `fn`
     Fn,
 
+    /// `for`
+    For,
+
     /// `return`
     Return,
 
@@ -176,6 +179,7 @@ impl Token {
             Token::Walrus,
             Token::RArrow,
             Token::Fn,
+            Token::For,
             Token::Return,
             Token::Struct,
             Token::Test,
@@ -213,6 +217,7 @@ impl Token {
             Token::Walrus => TokenType::Symbols(":="),
             Token::RArrow => TokenType::Symbols("->"),
             Token::Fn => TokenType::Keyword("fn"),
+            Token::For => TokenType::Keyword("for"),
             Token::Return => TokenType::Keyword("return"),
             Token::Struct => TokenType::Keyword("struct"),
             Token::Test => TokenType::Keyword("test"),

@@ -88,7 +88,10 @@ pub struct ModuleGen {
 
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
-    locals: Vec<HashMap<Rc<str>, PointerValue<'static>>>,
+    locals: Vec<(
+        HashMap<Rc<str>, PointerValue<'static>>,
+        FunctionValue<'static>,
+    )>,
 }
 
 impl ModuleGen {
@@ -386,7 +389,7 @@ impl EmitIr for ast::Func {
             }
         }
 
-        gen.locals.push(locals);
+        gen.locals.push((locals, fn_val));
         let val = self.block.emit_ir(gen)?;
         gen.locals.pop();
 
@@ -438,6 +441,10 @@ impl EmitIr for ast::Stmt {
                 set.emit_ir(gen)?;
                 Ok(Value::None)
             }
+            ast::Stmt::Loop(l) => {
+                l.emit_ir(gen)?;
+                Ok(Value::None)
+            }
             ast::Stmt::Expr(expr) => expr.expr.emit_ir(gen),
             ast::Stmt::Return(expr) => {
                 let expr = expr.expr.emit_ir(gen)?;
@@ -445,6 +452,26 @@ impl EmitIr for ast::Stmt {
                 Ok(Value::Never)
             }
         }
+    }
+}
+
+impl EmitIr for ast::Loop {
+    type Val = ();
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        let current_func = gen.locals.last().unwrap().1;
+        let loop_block = gen.ctx.append_basic_block(current_func, "loop");
+
+        gen.builder.build_unconditional_branch(loop_block).unwrap();
+        gen.builder.position_at_end(loop_block);
+        self.block.emit_ir(gen).unwrap();
+        gen.builder.position_at_end(loop_block);
+        gen.builder.build_unconditional_branch(loop_block).unwrap();
+
+        let after = gen.ctx.append_basic_block(current_func, "loop-after");
+        gen.builder.position_at_end(after);
+
+        Ok(())
     }
 }
 
@@ -471,7 +498,12 @@ impl EmitIr for ast::Init {
             }
 
             // shadow the old var
-            _ = gen.locals.last_mut().unwrap().insert(var_name.into(), addr);
+            _ = gen
+                .locals
+                .last_mut()
+                .unwrap()
+                .0
+                .insert(var_name.into(), addr);
 
             gen.namespace
                 .truncate(gen.namespace.len() - 2 - var_name.len());
@@ -490,7 +522,7 @@ impl EmitIr for ast::Set {
             gen.namespace.push_str("::");
             gen.namespace.push_str(var_name);
 
-            let addr = *gen.locals.last_mut().unwrap().get(var_name).unwrap();
+            let addr = *gen.locals.last_mut().unwrap().0.get(var_name).unwrap();
             match expr.emit_ir(gen)? {
                 Value::Func(_) => todo!(),
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
@@ -553,7 +585,7 @@ impl EmitIr for ast::Expr {
                 ))
             }
             ast::AnyExpr::Load(var) => {
-                if let Some(locals) = gen.locals.last() {
+                if let Some((locals, _)) = gen.locals.last() {
                     if let Some(addr) = locals.get(var.value.as_str()).cloned() {
                         let pointee_ty = self.ty.as_llvm(gen).unwrap();
                         let val = gen.builder.build_load(pointee_ty, addr, "tmp").unwrap();
@@ -744,6 +776,7 @@ impl ConstEval for ast::Stmt {
         match self {
             ast::Stmt::Init(_) => todo!(),
             ast::Stmt::Set(_) => todo!(),
+            ast::Stmt::Loop(_) => todo!(),
             ast::Stmt::Expr(expr) => expr.expr.eval(),
             ast::Stmt::Return(_) => todo!(),
         }

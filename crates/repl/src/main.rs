@@ -6,9 +6,12 @@ fn main() {
     let str = r#"  
         main := fn() -> i32 {
             a := "test";
-            print(a);
-            a = "another";
-            print(a);
+            for {
+                a := "test";
+                print(a);
+                a = "another";
+                print(a);
+            };
             sum(32, 32)
         }
     "#;
