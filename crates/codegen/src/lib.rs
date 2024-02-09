@@ -19,8 +19,6 @@ use llvm::{
 use parser::{ast, TypeId};
 use typeck::{Func, TypeCheck};
 
-use crate::types::get_or_init_struct;
-
 //
 
 pub use types::{AsLlvm, FnAsLlvm, Str};
@@ -573,7 +571,7 @@ impl EmitIr for ast::Expr {
 
                 // gen.builder.build_store(ptr, str_arr).unwrap();
 
-                let str_type = get_or_init_struct(gen.ctx, "str", |_| todo!());
+                let str_type = TypeId::Str.as_llvm(gen).unwrap().into_struct_type();
                 Ok(Value::Str(
                     str_type.const_named_struct(&[
                         gen.ctx
