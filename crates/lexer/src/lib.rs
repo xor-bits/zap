@@ -116,6 +116,12 @@ pub enum Token {
     /// `!=`
     Neq,
 
+    /// `&&`
+    And,
+
+    /// `||`
+    Or,
+
     /// `:=`
     Walrus,
 
@@ -180,6 +186,8 @@ impl Token {
             Token::Ge,
             Token::Eq,
             Token::Neq,
+            Token::And,
+            Token::Or,
             Token::Walrus,
             Token::RArrow,
             Token::Fn,
@@ -219,6 +227,8 @@ impl Token {
             Token::Ge => TokenType::Symbols(">="),
             Token::Eq => TokenType::Symbols("=="),
             Token::Neq => TokenType::Symbols("!="),
+            Token::And => TokenType::Symbols("&&"),
+            Token::Or => TokenType::Symbols("||"),
             Token::Walrus => TokenType::Symbols(":="),
             Token::RArrow => TokenType::Symbols("->"),
             Token::Fn => TokenType::Keyword("fn"),

@@ -461,13 +461,23 @@ pub enum BinaryOp {
     Add,
     Sub,
 
-    // TODO: 5: bitshift
+    // TODO: 5: << >>
 
-    // 6: lt, le, gt, ge comparisons
+    // 6: < <= > >=
     Lt,
     Le,
     Gt,
     Ge,
+
+    // 7: ==, !=
+    Eq,
+    Neq,
+
+    // 11: &&
+    And,
+
+    // 12: ||
+    Or,
 }
 
 impl BinaryOp {
@@ -482,6 +492,10 @@ impl BinaryOp {
             BinaryOp::Le => "<=",
             BinaryOp::Gt => ">",
             BinaryOp::Ge => ">=",
+            BinaryOp::Eq => "==",
+            BinaryOp::Neq => "!=",
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
         }
     }
 }
@@ -521,7 +535,53 @@ impl From<AnyExpr> for Expr {
     }
 }
 
+impl Parse for Expr {
+    fn parse(tokens: &mut ParseStream) -> Result<Self> {
+        Self::parse_eq_cmp(tokens)
+    }
+}
+
 impl Expr {
+    fn parse_eq_cmp(tokens: &mut ParseStream) -> Result<Self> {
+        let mut lhs: Self = Self::parse_ord_cmp(tokens)?;
+
+        while tokens.peek1(Token::Eq) | tokens.peek1(Token::Neq) {
+            let op = match tokens.next_token()?.token() {
+                Token::Eq => BinaryOp::Eq,
+                Token::Neq => BinaryOp::Neq,
+                _ => unreachable!(),
+            };
+            let sides = Box::new((lhs, Self::parse_ord_cmp(tokens)?));
+
+            lhs = Self::from(AnyExpr::Binary { op, sides });
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_ord_cmp(tokens: &mut ParseStream) -> Result<Self> {
+        let mut lhs: Self = Self::parse_math_expr(tokens)?;
+
+        while tokens.peek1(Token::Lt)
+            | tokens.peek1(Token::Le)
+            | tokens.peek1(Token::Gt)
+            | tokens.peek1(Token::Ge)
+        {
+            let op = match tokens.next_token()?.token() {
+                Token::Lt => BinaryOp::Lt,
+                Token::Le => BinaryOp::Le,
+                Token::Gt => BinaryOp::Gt,
+                Token::Ge => BinaryOp::Ge,
+                _ => unreachable!(),
+            };
+            let sides = Box::new((lhs, Self::parse_math_expr(tokens)?));
+
+            lhs = Self::from(AnyExpr::Binary { op, sides });
+        }
+
+        Ok(lhs)
+    }
+
     fn parse_math_expr(tokens: &mut ParseStream) -> Result<Self> {
         let mut lhs: Self = Self::parse_math_term(tokens)?;
 
@@ -531,7 +591,7 @@ impl Expr {
                 Token::Minus => BinaryOp::Sub,
                 _ => unreachable!(),
             };
-            let sides = Box::new((lhs, Self::parse_math_call(tokens)?));
+            let sides = Box::new((lhs, Self::parse_math_term(tokens)?));
 
             lhs = Self::from(AnyExpr::Binary { op, sides });
         }
@@ -618,12 +678,6 @@ impl Expr {
         } else {
             Err(look.err())
         }
-    }
-}
-
-impl Parse for Expr {
-    fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        Self::parse_math_expr(tokens)
     }
 }
 

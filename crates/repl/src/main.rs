@@ -28,7 +28,7 @@ fn main() {
         fizzbuzz := fn() {
             i := 0;
             for {
-                fizz := i % 3;
+                fizz := i % 3 == 0;
                 printi(fizz);
                 i = i + 1;
             };
