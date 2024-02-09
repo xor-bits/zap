@@ -1,5 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    iter,
     rc::Rc,
 };
 
@@ -14,7 +15,7 @@ use llvm::{
     },
     AddressSpace, OptimizationLevel,
 };
-use parser::ast;
+use parser::{ast, TypeId};
 use typeck::{Func, TypeCheck};
 
 use crate::types::get_or_init_struct;
@@ -138,6 +139,85 @@ impl ModuleGen {
         let val = self
             .builder
             .build_indirect_call(wrapper_ty, fn_ptr, &args, "call-fn-ptr")
+            .unwrap();
+
+        let val = match val.try_as_basic_value().left() {
+            Some(BasicValueEnum::ArrayValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::IntValue(v)) => Ok(Value::I32(v)),
+            Some(BasicValueEnum::FloatValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
+            None => Ok(Value::None),
+        }?;
+
+        self.build_return(val);
+
+        if !wrapper_ptr.verify(true) {
+            eprintln!("LLVM IR:\n");
+            self.module.print_to_stderr();
+            panic!("invalid fn");
+        }
+
+        Ok(())
+    }
+
+    /// # Safety
+    /// the fn_ptr should be `extern "C"` signature should match `ret` and `args`
+    pub unsafe fn add_extern_userdata(
+        &mut self,
+        name: &str,
+        fn_ptr: usize,
+        userdata: usize,
+        ret: TypeId,
+        args: Vec<TypeId>,
+    ) -> Result<()> {
+        let ty_usize = self
+            .ctx
+            .ptr_sized_int_type(self.engine.get_target_data(), None);
+
+        let param_types: Vec<_> = iter::once(ty_usize.into())
+            .chain(args.iter().filter_map(|a| a.as_llvm_meta(self)))
+            .collect();
+        let wrapped_ty = ret.as_llvm_fn(self, &param_types, false);
+
+        let param_types: Vec<_> = args.iter().filter_map(|a| a.as_llvm_meta(self)).collect();
+        let wrapper_ty = ret.as_llvm_fn(self, &param_types, false);
+        let wrapper_ptr = self.module.add_function(name, wrapper_ty, None);
+
+        self.types.add_extern(name, Func { ret, args });
+
+        match self.statics.entry(name.into()) {
+            Entry::Occupied(_) => return Err(Error::StaticRedefined(name.into())),
+            Entry::Vacant(entry) => entry.insert(Value::Func(FuncValue {
+                // data: None,
+                fn_ptr: wrapper_ptr,
+            })),
+        };
+
+        let entry = self.ctx.append_basic_block(wrapper_ptr, "entry");
+        self.builder.position_at_end(entry);
+
+        let ty_ptr = ty_usize.ptr_type(AddressSpace::default());
+        let fn_ptr = self
+            .builder
+            .build_int_to_ptr(
+                ty_usize.const_int(fn_ptr as _, false),
+                ty_ptr,
+                "wrapped-fn-ptr",
+            )
+            .unwrap();
+
+        let userdata = ty_usize.const_int(userdata as _, false).into();
+        let params = wrapper_ptr
+            .get_param_iter()
+            .map(|p| p.as_any_value_enum().try_into().unwrap());
+
+        let args: Vec<BasicMetadataValueEnum> = iter::once(userdata).chain(params).collect();
+
+        let val = self
+            .builder
+            .build_indirect_call(wrapped_ty, fn_ptr, &args, "call-fn-ptr")
             .unwrap();
 
         let val = match val.try_as_basic_value().left() {

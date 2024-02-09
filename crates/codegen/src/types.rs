@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{slice, str};
 
 use inkwell::{
@@ -22,6 +23,12 @@ impl Str {
     pub fn as_str(&self) -> &str {
         let str_slice = unsafe { slice::from_raw_parts(self.ptr, self.len) };
         str::from_utf8(str_slice).unwrap()
+    }
+}
+
+impl fmt::Display for Str {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
