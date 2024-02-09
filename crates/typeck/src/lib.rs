@@ -1,7 +1,10 @@
 use core::fmt;
 use std::{collections::HashMap, rc::Rc};
 
-use parser::{ast, TypeId};
+use parser::{
+    ast::{self, BinaryOp},
+    TypeId,
+};
 
 //
 
@@ -357,73 +360,24 @@ impl TypeCheck for ast::Expr {
                 v.type_check(ctx);
                 v.proto.ty
             }
-            ast::AnyExpr::Add(v) => {
-                v.0.type_check(ctx);
-                v.1.type_check(ctx);
+            ast::AnyExpr::Binary { op, sides } => {
+                sides.0.type_check(ctx);
+                sides.1.type_check(ctx);
 
                 match (
-                    ctx.types.get(v.0.ty).unwrap(),
-                    ctx.types.get(v.1.ty).unwrap(),
+                    *op,
+                    ctx.types.get(sides.0.ty).unwrap(),
+                    ctx.types.get(sides.1.ty).unwrap(),
                 ) {
-                    (Type::I32, Type::I32) => TypeId::I32,
-                    (lhs, rhs) => {
-                        panic!("cannot `{lhs}+{rhs}`")
-                    }
-                }
-            }
-            ast::AnyExpr::Sub(v) => {
-                v.0.type_check(ctx);
-                v.1.type_check(ctx);
+                    (BinaryOp::Mul, Type::I32, Type::I32) => TypeId::I32,
+                    (BinaryOp::Div, Type::I32, Type::I32) => TypeId::I32,
+                    (BinaryOp::Rem, Type::I32, Type::I32) => TypeId::I32,
 
-                match (
-                    ctx.types.get(v.0.ty).unwrap(),
-                    ctx.types.get(v.1.ty).unwrap(),
-                ) {
-                    (Type::I32, Type::I32) => TypeId::I32,
-                    (lhs, rhs) => {
-                        panic!("cannot `{lhs}-{rhs}`")
-                    }
-                }
-            }
-            ast::AnyExpr::Mul(v) => {
-                v.0.type_check(ctx);
-                v.1.type_check(ctx);
+                    (BinaryOp::Add, Type::I32, Type::I32) => TypeId::I32,
+                    (BinaryOp::Sub, Type::I32, Type::I32) => TypeId::I32,
 
-                match (
-                    ctx.types.get(v.0.ty).unwrap(),
-                    ctx.types.get(v.1.ty).unwrap(),
-                ) {
-                    (Type::I32, Type::I32) => TypeId::I32,
-                    (lhs, rhs) => {
-                        panic!("cannot `{lhs}*{rhs}`")
-                    }
-                }
-            }
-            ast::AnyExpr::Div(v) => {
-                v.0.type_check(ctx);
-                v.1.type_check(ctx);
-
-                match (
-                    ctx.types.get(v.0.ty).unwrap(),
-                    ctx.types.get(v.1.ty).unwrap(),
-                ) {
-                    (Type::I32, Type::I32) => TypeId::I32,
-                    (lhs, rhs) => {
-                        panic!("cannot `{lhs}/{rhs}`")
-                    }
-                }
-            }
-            ast::AnyExpr::Mod(v) => {
-                v.0.type_check(ctx);
-                v.1.type_check(ctx);
-
-                match (
-                    ctx.types.get(v.0.ty).unwrap(),
-                    ctx.types.get(v.1.ty).unwrap(),
-                ) {
-                    (Type::I32, Type::I32) => TypeId::I32,
-                    (lhs, rhs) => {
-                        panic!("cannot `{lhs}%{rhs}`")
+                    (op, lhs, rhs) => {
+                        panic!("cannot `{lhs} {op} {rhs}`")
                     }
                 }
             }

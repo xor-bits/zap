@@ -17,7 +17,10 @@ use llvm::{
     },
     AddressSpace, OptimizationLevel,
 };
-use parser::{ast, TypeId};
+use parser::{
+    ast::{self, BinaryOp},
+    TypeId,
+};
 use typeck::{Func, FuncId, TypeCheck};
 
 //
@@ -665,51 +668,29 @@ impl EmitIr for ast::Expr {
                 Err(Error::VariableNotFound(var.value.clone()))
             }
             ast::AnyExpr::Func(_) => todo!(),
-            ast::AnyExpr::Add(sides) => match sides.emit_ir(gen)? {
-                (Value::I32(lhs), Value::I32(rhs)) => {
-                    let val = gen.builder.build_int_add(lhs, rhs, "tmp").unwrap();
-                    Ok(Value::I32(val))
+            ast::AnyExpr::Binary { op, sides } => {
+                let (lhs, rhs) = sides.emit_ir(gen)?;
+                match (*op, lhs, rhs) {
+                    (BinaryOp::Mul, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::I32(
+                        gen.builder.build_int_mul(lhs, rhs, "tmp").unwrap(),
+                    )),
+                    (BinaryOp::Div, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::I32(
+                        gen.builder.build_int_signed_div(lhs, rhs, "tmp").unwrap(),
+                    )),
+                    (BinaryOp::Rem, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::I32(
+                        gen.builder.build_int_signed_rem(lhs, rhs, "tmp").unwrap(),
+                    )),
+
+                    (BinaryOp::Add, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::I32(
+                        gen.builder.build_int_add(lhs, rhs, "tmp").unwrap(),
+                    )),
+                    (BinaryOp::Sub, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::I32(
+                        gen.builder.build_int_sub(lhs, rhs, "tmp").unwrap(),
+                    )),
+
+                    _ => todo!(),
                 }
-                _ => {
-                    todo!()
-                }
-            },
-            ast::AnyExpr::Sub(sides) => match sides.emit_ir(gen)? {
-                (Value::I32(lhs), Value::I32(rhs)) => {
-                    let val = gen.builder.build_int_sub(lhs, rhs, "tmp").unwrap();
-                    Ok(Value::I32(val))
-                }
-                _ => {
-                    todo!()
-                }
-            },
-            ast::AnyExpr::Mul(sides) => match sides.emit_ir(gen)? {
-                (Value::I32(lhs), Value::I32(rhs)) => {
-                    let val = gen.builder.build_int_mul(lhs, rhs, "tmp").unwrap();
-                    Ok(Value::I32(val))
-                }
-                _ => {
-                    todo!()
-                }
-            },
-            ast::AnyExpr::Div(sides) => match sides.emit_ir(gen)? {
-                (Value::I32(lhs), Value::I32(rhs)) => {
-                    let val = gen.builder.build_int_signed_div(lhs, rhs, "tmp").unwrap();
-                    Ok(Value::I32(val))
-                }
-                _ => {
-                    todo!()
-                }
-            },
-            ast::AnyExpr::Mod(sides) => match sides.emit_ir(gen)? {
-                (Value::I32(lhs), Value::I32(rhs)) => {
-                    let val = gen.builder.build_int_signed_rem(lhs, rhs, "tmp").unwrap();
-                    Ok(Value::I32(val))
-                }
-                _ => {
-                    todo!()
-                }
-            },
+            }
             ast::AnyExpr::Call(call) => {
                 let func = call.func.emit_ir(gen)?;
                 let func = match func {
@@ -797,31 +778,28 @@ impl ConstEval for ast::Expr {
             ast::AnyExpr::LitStr(_) => todo!(),
             ast::AnyExpr::Load(_) => todo!(),
             ast::AnyExpr::Func(_) => todo!(),
-            ast::AnyExpr::Add(sides) => match sides.eval()? {
-                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
-                    Ok(ConstValue::I32(lhs.wrapping_add(rhs)))
+            ast::AnyExpr::Binary { op, sides } => {
+                let (lhs, rhs) = sides.eval()?;
+                match (*op, lhs, rhs) {
+                    (BinaryOp::Mul, ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                        Ok(ConstValue::I32(lhs.wrapping_mul(rhs)))
+                    }
+                    (BinaryOp::Div, ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                        Ok(ConstValue::I32(lhs.wrapping_div(rhs)))
+                    }
+                    (BinaryOp::Rem, ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                        Ok(ConstValue::I32(lhs.wrapping_rem(rhs)))
+                    }
+
+                    (BinaryOp::Add, ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                        Ok(ConstValue::I32(lhs.wrapping_add(rhs)))
+                    }
+                    (BinaryOp::Sub, ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                        Ok(ConstValue::I32(lhs.wrapping_sub(rhs)))
+                    }
+                    _ => todo!(),
                 }
-                _ => todo!(),
-            },
-            ast::AnyExpr::Sub(_) => todo!(),
-            ast::AnyExpr::Mul(sides) => match sides.eval()? {
-                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
-                    Ok(ConstValue::I32(lhs.wrapping_mul(rhs)))
-                }
-                _ => todo!(),
-            },
-            ast::AnyExpr::Div(sides) => match sides.eval()? {
-                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
-                    Ok(ConstValue::I32(lhs.wrapping_div(rhs)))
-                }
-                _ => todo!(),
-            },
-            ast::AnyExpr::Mod(sides) => match sides.eval()? {
-                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
-                    Ok(ConstValue::I32(lhs.wrapping_rem(rhs)))
-                }
-                _ => todo!(),
-            },
+            }
             ast::AnyExpr::Call(_) => todo!(),
         }
     }

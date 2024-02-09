@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::{unexpected, Parse, ParseStream, Result, Token, TypeId};
 use macros::Parse;
 
@@ -443,6 +445,56 @@ pub struct Expr {
 //
 
 #[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    // order of ops:
+    // 1: fn call (unary op)
+
+    // TODO: 2: unary ops
+
+    // 3: * / %
+    Mul,
+    Div,
+    Rem,
+
+    // 4: + -
+    Add,
+    Sub,
+
+    // TODO: 5: bitshift
+
+    // 6: lt, le, gt, ge comparisons
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl BinaryOp {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Rem => "%",
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Lt => "<",
+            BinaryOp::Le => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Ge => ">=",
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnyExpr {
     Block(Box<Block>),
@@ -452,12 +504,12 @@ pub enum AnyExpr {
 
     Func(Func),
 
-    Add(Box<(Expr, Expr)>),
-    Sub(Box<(Expr, Expr)>),
-    Mul(Box<(Expr, Expr)>),
-    Div(Box<(Expr, Expr)>),
-    Mod(Box<(Expr, Expr)>),
     Call(Box<Call>),
+
+    Binary {
+        op: BinaryOp,
+        sides: Box<(Expr, Expr)>,
+    },
 }
 
 impl From<AnyExpr> for Expr {
@@ -474,14 +526,14 @@ impl Expr {
         let mut lhs: Self = Self::parse_math_term(tokens)?;
 
         while tokens.peek1(Token::Plus) | tokens.peek1(Token::Minus) {
-            let is_add = tokens.next_token()?.token() == Token::Plus;
+            let op = match tokens.next_token()?.token() {
+                Token::Plus => BinaryOp::Add,
+                Token::Minus => BinaryOp::Sub,
+                _ => unreachable!(),
+            };
+            let sides = Box::new((lhs, Self::parse_math_call(tokens)?));
 
-            let expr = Box::new((lhs, Self::parse_math_term(tokens)?));
-            lhs = Self::from(if is_add {
-                AnyExpr::Add(expr)
-            } else {
-                AnyExpr::Sub(expr)
-            });
+            lhs = Self::from(AnyExpr::Binary { op, sides });
         }
 
         Ok(lhs)
@@ -494,15 +546,15 @@ impl Expr {
             | tokens.peek1(Token::Slash)
             | tokens.peek1(Token::Percent)
         {
-            let op_token = tokens.next_token()?.token();
+            let op = match tokens.next_token()?.token() {
+                Token::Asterisk => BinaryOp::Mul,
+                Token::Slash => BinaryOp::Div,
+                Token::Percent => BinaryOp::Rem,
+                _ => unreachable!(),
+            };
+            let sides = Box::new((lhs, Self::parse_math_call(tokens)?));
 
-            let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
-
-            lhs = Self::from(match op_token {
-                Token::Asterisk => AnyExpr::Mul(expr),
-                Token::Slash => AnyExpr::Div(expr),
-                _ => AnyExpr::Mod(expr),
-            });
+            lhs = Self::from(AnyExpr::Binary { op, sides });
         }
 
         Ok(lhs)
