@@ -501,6 +501,10 @@ impl EmitIr for ast::Stmt {
                 set.emit_ir(gen)?;
                 Ok(Value::None)
             }
+            ast::Stmt::If(v) => {
+                v.emit_ir(gen)?;
+                Ok(Value::None)
+            }
             ast::Stmt::Loop(l) => {
                 l.emit_ir(gen)?;
                 Ok(Value::None)
@@ -515,6 +519,31 @@ impl EmitIr for ast::Stmt {
     }
 }
 
+impl EmitIr for ast::If {
+    type Val = ();
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        let current_func = gen.locals.last().unwrap().1;
+
+        let then_block = gen.ctx.append_basic_block(current_func, "branch");
+        let else_block = gen.ctx.append_basic_block(current_func, "branch-after");
+
+        let Value::Bool(bool) = self.check.emit_ir(gen)? else {
+            unreachable!("{:?}", self.check)
+        };
+        gen.builder
+            .build_conditional_branch(bool, then_block, else_block)
+            .unwrap();
+        gen.builder.position_at_end(then_block);
+
+        self.block.emit_ir(gen)?;
+        gen.builder.build_unconditional_branch(else_block).unwrap();
+        gen.builder.position_at_end(else_block);
+
+        Ok(())
+    }
+}
+
 impl EmitIr for ast::Loop {
     type Val = ();
 
@@ -525,7 +554,6 @@ impl EmitIr for ast::Loop {
         gen.builder.build_unconditional_branch(loop_block).unwrap();
         gen.builder.position_at_end(loop_block);
         self.block.emit_ir(gen).unwrap();
-        gen.builder.position_at_end(loop_block);
         gen.builder.build_unconditional_branch(loop_block).unwrap();
 
         let after = gen.ctx.append_basic_block(current_func, "loop-after");
@@ -654,13 +682,14 @@ impl EmitIr for ast::Expr {
                     if let Some(addr) = locals.get(var.value.as_str()).cloned() {
                         let pointee_ty = self.ty.as_llvm(gen).unwrap();
                         let val = gen.builder.build_load(pointee_ty, addr, "tmp").unwrap();
-                        return match val {
-                            BasicValueEnum::ArrayValue(_) => todo!(),
-                            BasicValueEnum::IntValue(v) => Ok(Value::I32(v)),
-                            BasicValueEnum::FloatValue(_) => todo!(),
-                            BasicValueEnum::PointerValue(_) => todo!(),
-                            BasicValueEnum::StructValue(s) => Ok(Value::Str(s)), // FIXME: check this
-                            BasicValueEnum::VectorValue(_) => todo!(),
+
+                        return match self.ty {
+                            TypeId::Bool => Ok(Value::Bool(val.into_int_value())),
+                            TypeId::I32 => Ok(Value::I32(val.into_int_value())),
+                            TypeId::Str => Ok(Value::Str(val.into_struct_value())),
+                            TypeId::Void => Ok(Value::None),
+                            TypeId::Unknown => unreachable!(),
+                            TypeId::Other(_) => todo!(),
                         };
                     }
                 }
@@ -877,6 +906,7 @@ impl ConstEval for ast::Stmt {
         match self {
             ast::Stmt::Init(_) => todo!(),
             ast::Stmt::Set(_) => todo!(),
+            ast::Stmt::If(_) => todo!(),
             ast::Stmt::Loop(_) => todo!(),
             ast::Stmt::Expr(expr) => expr.expr.eval(),
             ast::Stmt::Return(_) => todo!(),

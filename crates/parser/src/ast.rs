@@ -347,6 +347,7 @@ impl Parse for Block {
 pub enum Stmt {
     Init(Init),
     Set(Set),
+    If(If),
     Loop(Loop),
     Expr(StmtExpr),
     Return(Return),
@@ -374,11 +375,20 @@ impl Parse for Stmt {
                     }))
                 }
             }
+            (Some(Token::If), _) => Ok(Self::If(tokens.parse()?)),
             (Some(Token::For), _) => Ok(Self::Loop(tokens.parse()?)),
             (Some(Token::Return), _) => Ok(Self::Return(tokens.parse()?)),
             _ => Ok(Self::Expr(tokens.parse()?)),
         }
     }
+}
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct If {
+    pub if_token: token::If,
+    pub check: Expr,
+    pub block: Block,
 }
 
 //

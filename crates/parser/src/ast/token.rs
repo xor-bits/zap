@@ -114,6 +114,12 @@ simple_tokens! {
     /// `!=`
     Neq,
 
+    /// `&&`
+    And,
+
+    /// `||`
+    Or,
+
     /// `:=`
     Walrus,
 
@@ -122,6 +128,9 @@ simple_tokens! {
 
     /// `fn`
     Fn,
+
+    /// `if`
+    If,
 
     /// `for`
     For,

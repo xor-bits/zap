@@ -446,6 +446,7 @@ impl TypeCheck for ast::Block {
                 self.ty = match last {
                     ast::Stmt::Init(_) => TypeId::Void,
                     ast::Stmt::Set(_) => TypeId::Void,
+                    ast::Stmt::If(_) => TypeId::Void,
                     ast::Stmt::Loop(_) => TypeId::Void,
                     ast::Stmt::Expr(v) => v.expr.ty,
                     ast::Stmt::Return(v) => v.expr.ty,
@@ -482,6 +483,7 @@ impl TypeCheck for ast::Stmt {
                     );
                 }
             }
+            ast::Stmt::If(v) => v.type_check(ctx),
             ast::Stmt::Loop(v) => v.type_check(ctx),
             ast::Stmt::Expr(v) => v.expr.type_check(ctx),
             ast::Stmt::Return(v) => {
@@ -489,6 +491,16 @@ impl TypeCheck for ast::Stmt {
                 assert_eq!(v.expr.ty, ctx.vars.return_ty(), "invalid return type");
             }
         }
+    }
+}
+
+impl TypeCheck for ast::If {
+    fn type_check(&mut self, ctx: &mut Context) {
+        self.check.type_check(ctx);
+        assert_eq!(self.check.ty, TypeId::Bool);
+
+        self.block.type_check(ctx);
+        assert_eq!(self.block.ty, TypeId::Void);
     }
 }
 

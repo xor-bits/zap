@@ -6,30 +6,32 @@ use compiler::{Compiler, Str};
 
 fn main() {
     let str = r#"  
-        recurse := fn(a: i32) {
-            printi(a);
-            wait();
-            recurse(a + 1);
-        };
+        // recurse := fn(a: i32) {
+        //     printi(a);
+        //     wait();
+        //     recurse(a + 1);
+        // };
 
-        fib := fn() {
-            a := 0;
-            b := 1;
-            for {
-                printi(a);
-                wait();
+        // fib := fn() {
+        //     a := 0;
+        //     b := 1;
+        //     for {
+        //         printi(a);
+        //         wait();
 
-                tmp := a + b;
-                a = b;
-                b = tmp;
-            };
-        };
+        //         tmp := a + b;
+        //         a = b;
+        //         b = tmp;
+        //     };
+        // };
 
         fizzbuzz := fn() {
             i := 0;
             for {
                 fizz := i % 3 == 0;
-                printb(fizz);
+                if fizz {
+                    printi(i);
+                };
                 i = i + 1;
             };
         };
