@@ -6,15 +6,22 @@ use compiler::{Compiler, Str};
 
 fn main() {
     let str = r#"  
+        recurse := fn(a: i32) {
+            printi(a);
+            recurse(a + 1);
+        };
+    
         main := fn() -> i32 {
-            a := 1;
-            for {
-                printi(a);
-                a = a + 1;
-                prints("waiting ..");
-                wait();
-            };
-            sum(32, 32)
+            recurse(1);
+            0
+            // a := 1;
+            // for {
+            //     printi(a);
+            //     a = a + 1;
+            //     prints("waiting ..");
+            //     wait();
+            // };
+            // sum(32, 32)
         }
     "#;
 

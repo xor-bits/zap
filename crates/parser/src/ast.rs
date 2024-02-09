@@ -599,17 +599,16 @@ impl Call {
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Func {
+pub struct Proto {
     pub ty: TypeId,
     pub fn_kw: token::Fn,
     pub args_beg: token::LParen,
     pub args: Option<CommaSeparated<Argument>>,
     pub args_end: token::RParen,
     pub return_ty: Option<(token::RArrow, Ident)>,
-    pub block: Block,
 }
 
-impl Func {
+impl Proto {
     pub fn args(&self) -> impl ExactSizeIterator<Item = &Argument> + Clone {
         OptionInner {
             inner: self.args.as_ref().map(|s| s.iter()),
@@ -623,7 +622,7 @@ impl Func {
     }
 }
 
-impl Parse for Func {
+impl Parse for Proto {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let fn_kw = tokens.parse()?;
         let _args_beg = tokens.parse()?;
@@ -648,18 +647,24 @@ impl Parse for Func {
             return Err(look.err());
         };
 
-        let block = tokens.parse()?;
-
-        Ok(Func {
+        Ok(Proto {
             ty: TypeId::Unknown,
             fn_kw,
             args_beg: _args_beg,
             args,
             args_end: _args_end,
             return_ty,
-            block,
         })
     }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct Func {
+    pub proto: Proto,
+    pub block: Block,
 }
 
 //

@@ -5,7 +5,7 @@ use parser::{ast, TypeId};
 
 //
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FuncId(pub usize);
 
 //
@@ -264,6 +264,8 @@ impl Scope {
 
 pub trait TypeCheck {
     fn type_check(&mut self, ctx: &mut Context);
+
+    fn type_check_partial(&mut self, ctx: &mut Context) {}
 }
 
 //
@@ -277,12 +279,23 @@ impl<T: TypeCheck> TypeCheck for ast::Ast<T> {
 impl TypeCheck for ast::Root {
     fn type_check(&mut self, ctx: &mut Context) {
         for item in self.inner.iter_mut() {
+            item.type_check_partial(ctx);
+        }
+
+        for item in self.inner.iter_mut() {
             item.type_check(ctx);
         }
     }
 }
 
 impl TypeCheck for ast::RootItem {
+    fn type_check_partial(&mut self, ctx: &mut Context) {
+        match self {
+            ast::RootItem::Init(v) => v.type_check_partial(ctx),
+            ast::RootItem::Test(_) => {}
+        }
+    }
+
     fn type_check(&mut self, ctx: &mut Context) {
         match self {
             ast::RootItem::Init(v) => v.type_check(ctx),
@@ -292,6 +305,19 @@ impl TypeCheck for ast::RootItem {
 }
 
 impl TypeCheck for ast::RootInit {
+    fn type_check_partial(&mut self, ctx: &mut Context) {
+        let targets = self.targets.iter();
+        let exprs = self.exprs.iter_mut();
+        assert_eq!(targets.len(), exprs.len());
+
+        for (target, expr) in targets.zip(exprs) {
+            expr.type_check_partial(ctx);
+            if expr.ty != TypeId::Unknown {
+                ctx.vars.init(&target.path.ident.value, expr.ty);
+            }
+        }
+    }
+
     fn type_check(&mut self, ctx: &mut Context) {
         let targets = self.targets.iter();
         let exprs = self.exprs.iter_mut();
@@ -308,6 +334,13 @@ impl TypeCheck for ast::RootInit {
 }
 
 impl TypeCheck for ast::Expr {
+    fn type_check_partial(&mut self, ctx: &mut Context) {
+        if let ast::AnyExpr::Func(v) = &mut self.expr {
+            v.proto.type_check(ctx);
+            self.ty = v.proto.ty;
+        }
+    }
+
     fn type_check(&mut self, ctx: &mut Context) {
         self.ty = match &mut self.expr {
             ast::AnyExpr::Block(v) => {
@@ -322,7 +355,7 @@ impl TypeCheck for ast::Expr {
                 .unwrap_or_else(|| panic!("unknown variable `{}`", v.value)),
             ast::AnyExpr::Func(v) => {
                 v.type_check(ctx);
-                v.ty
+                v.proto.ty
             }
             ast::AnyExpr::Add(v) => {
                 v.0.type_check(ctx);
@@ -509,24 +542,35 @@ impl<'a, Args: Clone + ExactSizeIterator<Item = &'a ast::Argument>> TypeCheck fo
     }
 }
 
+impl TypeCheck for ast::Proto {
+    fn type_check(&mut self, ctx: &mut Context) {
+        if self.ty != TypeId::Unknown {
+            return;
+        }
+
+        let ret = self.return_ty.as_ref().map_or(TypeId::Void, |(_, ty)| {
+            ctx.types.lookup(&ty.value).expect("unknown type")
+        });
+
+        let args: Vec<TypeId> = self
+            .args()
+            .map(|arg| ctx.types.lookup(&arg.ty.value).expect("unknown type"))
+            .collect();
+
+        let func_id = ctx.funcs.push(Func { ret, args });
+        let type_id = ctx.types.push(Type::Func(func_id));
+
+        self.ty = type_id;
+    }
+}
+
 impl TypeCheck for ast::Func {
     fn type_check(&mut self, ctx: &mut Context) {
         // TODO: run all Proto::type_check functions before running the block code
         // to allow recursion and ordering the global scope in any way
-        self.ty = {
-            let mut proto = Proto {
-                ty: self.ty,
-                return_ty: self
-                    .return_ty
-                    .as_ref()
-                    .map(|(_, type_name)| type_name.value.as_str()),
-                args: self.args(),
-            };
-            proto.type_check(ctx);
-            proto.ty
-        };
+        // self.proto.type_check(ctx);
 
-        let type_id = self.ty;
+        let type_id = self.proto.ty;
 
         let func_id = match ctx.types.get(type_id) {
             Some(Type::Func(func_id)) => *func_id,
@@ -536,20 +580,19 @@ impl TypeCheck for ast::Func {
 
         let func = ctx.funcs.get(func_id).unwrap();
 
+        // start a new scope
         ctx.vars.push(func.ret);
 
-        for (arg, arg_type_id) in self
-            .args
-            .iter()
-            .flat_map(|s| s.iter())
-            .zip(func.args.iter())
-        {
+        // add all fn args
+        for (arg, arg_type_id) in self.proto.args().zip(func.args.iter()) {
             ctx.vars.init(&arg.id.value, *arg_type_id);
         }
 
+        // type check the scope
         self.block.type_check(ctx);
         assert_eq!(self.block.ty, ctx.vars.return_ty(), "invalid return type");
 
+        // finish the scope
         ctx.vars.pop();
     }
 }

@@ -17,7 +17,7 @@ use llvm::{
     AddressSpace, OptimizationLevel,
 };
 use parser::{ast, TypeId};
-use typeck::{Func, TypeCheck};
+use typeck::{Func, FuncId, TypeCheck};
 
 //
 
@@ -66,6 +66,7 @@ impl CodeGen {
             builder,
             engine,
             types: typeck::Context::new(),
+            fns: HashMap::new(),
             statics: HashMap::new(),
             namespace: "<run>".to_string(),
             locals: Vec::new(),
@@ -83,6 +84,8 @@ pub struct ModuleGen {
     engine: ExecutionEngine<'static>,
 
     types: typeck::Context,
+
+    fns: HashMap<FuncId, FuncValue>,
 
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
@@ -280,7 +283,7 @@ enum Value {
     None,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct FuncValue {
     // data: Option<Box<Value>>,
     fn_ptr: FunctionValue<'static>,
@@ -290,6 +293,11 @@ struct FuncValue {
 
 trait EmitIr {
     type Val;
+
+    #[allow(unused)]
+    fn emit_ir_partial(&self, gen: &mut ModuleGen) -> Result<()> {
+        Ok(())
+    }
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val>;
 }
@@ -306,7 +314,15 @@ impl EmitIr for ast::Root {
     type Val = ();
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
-        // TODO: allow recursion + calling functions that are declared later in the code
+        // collect all functions and compile the prototypes before the bodies
+        for item in self.inner.iter() {
+            match item {
+                ast::RootItem::Init(init) => init.emit_ir_partial(gen)?,
+                _ => todo!(), // ast::RootItem::Test(test) => test.emit_ir(gen)?,
+            }
+        }
+
+        // then compile all the bodies
         for item in self.inner.iter() {
             match item {
                 ast::RootItem::Init(init) => init.emit_ir(gen)?,
@@ -321,7 +337,7 @@ impl EmitIr for ast::Root {
 impl EmitIr for ast::RootInit {
     type Val = ();
 
-    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+    fn emit_ir_partial(&self, gen: &mut ModuleGen) -> Result<()> {
         assert_eq!(self.targets.iter().len(), self.exprs.iter().len());
         for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
             let var_name = target.path.ident.value.as_str();
@@ -329,7 +345,7 @@ impl EmitIr for ast::RootInit {
             gen.namespace.push_str(var_name);
 
             let v = match &expr.expr {
-                ast::AnyExpr::Func(f) => Value::Func(f.emit_ir(gen)?),
+                ast::AnyExpr::Func(f) => Value::Func(f.proto.emit_ir(gen)?),
                 _ => expr.eval()?.emit_ir(gen)?,
             };
 
@@ -343,14 +359,22 @@ impl EmitIr for ast::RootInit {
         }
         Ok(())
     }
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        assert_eq!(self.targets.iter().len(), self.exprs.iter().len());
+        for (_, expr) in self.targets.iter().zip(self.exprs.iter()) {
+            if let ast::AnyExpr::Func(f) = &expr.expr {
+                f.emit_ir(gen)?
+            };
+        }
+        Ok(())
+    }
 }
 
-impl EmitIr for ast::Func {
+impl EmitIr for ast::Proto {
     type Val = FuncValue;
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
-        // TODO: generic functions are generated lazily
-
         let func_id = gen
             .types
             .get_type(self.ty)
@@ -367,14 +391,37 @@ impl EmitIr for ast::Func {
         let proto = func.ret.as_llvm_fn(gen, &param_types, false);
         let fn_val = gen.module.add_function(&gen.namespace, proto, None);
 
+        let val = FuncValue {
+            // data: None,
+            fn_ptr: fn_val,
+        };
+
+        if gen.fns.insert(func_id, val).is_some() {
+            panic!("function re-defined");
+        }
+
+        Ok(val)
+    }
+}
+
+impl EmitIr for ast::Func {
+    type Val = ();
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        // TODO: generic functions are generated lazily
+
+        let func_id = gen
+            .types
+            .get_type(self.proto.ty)
+            .as_func()
+            .expect("a function should be a function");
+        let fn_val = gen.fns.get(&func_id).unwrap().fn_ptr;
+
         let entry = gen.ctx.append_basic_block(fn_val, "entry");
         gen.builder.position_at_end(entry);
 
         let mut locals = HashMap::new();
-        for (param, arg) in fn_val
-            .get_param_iter()
-            .zip(self.args.iter().flat_map(|a| a.iter()))
-        {
+        for (param, arg) in fn_val.get_param_iter().zip(self.proto.args()) {
             if let BasicValueEnum::IntValue(int) = param {
                 let addr = gen
                     .builder
@@ -399,10 +446,7 @@ impl EmitIr for ast::Func {
             panic!("invalid fn");
         }
 
-        Ok(FuncValue {
-            // data: None,
-            fn_ptr: fn_val,
-        })
+        Ok(())
     }
 }
 
