@@ -6,6 +6,7 @@ use std::{
 
 use inkwell as llvm;
 use llvm::{
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     execution_engine::ExecutionEngine,
@@ -55,6 +56,7 @@ impl CodeGen {
 
         let module = ctx.create_module("<run>");
         let builder = ctx.create_builder();
+        let alloca_builder = ctx.create_builder();
 
         let engine = module
             .create_jit_execution_engine(OptimizationLevel::Aggressive)
@@ -64,6 +66,8 @@ impl CodeGen {
             ctx,
             module,
             builder,
+            alloca_builder,
+
             engine,
             types: typeck::Context::new(),
             fns: HashMap::new(),
@@ -80,6 +84,7 @@ pub struct ModuleGen {
     ctx: &'static Context,
     module: Module<'static>,
     builder: Builder<'static>,
+    alloca_builder: Builder<'static>,
 
     engine: ExecutionEngine<'static>,
 
@@ -92,6 +97,7 @@ pub struct ModuleGen {
     locals: Vec<(
         HashMap<Rc<str>, PointerValue<'static>>,
         FunctionValue<'static>,
+        BasicBlock<'static>,
     )>,
 }
 
@@ -259,6 +265,7 @@ impl ModuleGen {
     pub fn run(&mut self) -> Result<i32> {
         // eprintln!("LLVM IR:\n");
         // self.module.print_to_stderr();
+        // panic!();
 
         // FIXME: validate the main function signature
         let main_fn = unsafe {
@@ -418,7 +425,10 @@ impl EmitIr for ast::Func {
         let fn_val = gen.fns.get(&func_id).unwrap().fn_ptr;
 
         let entry = gen.ctx.append_basic_block(fn_val, "entry");
-        gen.builder.position_at_end(entry);
+        gen.alloca_builder.position_at_end(entry);
+
+        let code = gen.ctx.append_basic_block(fn_val, "code");
+        gen.builder.position_at_end(code);
 
         let mut locals = HashMap::new();
         for (param, arg) in fn_val.get_param_iter().zip(self.proto.args()) {
@@ -434,9 +444,12 @@ impl EmitIr for ast::Func {
             }
         }
 
-        gen.locals.push((locals, fn_val));
+        gen.locals.push((locals, fn_val, entry));
         let val = self.block.emit_ir(gen)?;
         gen.locals.pop();
+
+        gen.alloca_builder.position_at_end(entry);
+        gen.alloca_builder.build_unconditional_branch(code).unwrap();
 
         gen.build_return(val);
 
@@ -530,7 +543,10 @@ impl EmitIr for ast::Init {
             let v = expr.emit_ir(gen)?;
             let v_ty = expr.ty.as_llvm(gen).unwrap();
 
-            let addr = gen.builder.build_alloca(v_ty, var_name).unwrap();
+            let (_, _, entry) = gen.locals.last().unwrap();
+            gen.alloca_builder.position_at_end(*entry);
+
+            let addr = gen.alloca_builder.build_alloca(v_ty, var_name).unwrap();
             match v {
                 Value::Func(_) => todo!(),
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
@@ -627,7 +643,7 @@ impl EmitIr for ast::Expr {
                 ))
             }
             ast::AnyExpr::Load(var) => {
-                if let Some((locals, _)) = gen.locals.last() {
+                if let Some((locals, _, _)) = gen.locals.last() {
                     if let Some(addr) = locals.get(var.value.as_str()).cloned() {
                         let pointee_ty = self.ty.as_llvm(gen).unwrap();
                         let val = gen.builder.build_load(pointee_ty, addr, "tmp").unwrap();
