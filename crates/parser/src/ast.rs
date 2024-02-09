@@ -642,7 +642,7 @@ impl Parse for Func {
         let mut look = tokens.look1();
         let return_ty = if look.peek(Token::RArrow) {
             Some((tokens.parse()?, tokens.parse()?))
-        } else if look.peek(Token::RBrace) {
+        } else if look.peek(Token::LBrace) {
             None
         } else {
             return Err(look.err());
