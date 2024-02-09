@@ -456,6 +456,7 @@ pub enum AnyExpr {
     Sub(Box<(Expr, Expr)>),
     Mul(Box<(Expr, Expr)>),
     Div(Box<(Expr, Expr)>),
+    Mod(Box<(Expr, Expr)>),
     Call(Box<Call>),
 }
 
@@ -489,14 +490,18 @@ impl Expr {
     fn parse_math_term(tokens: &mut ParseStream) -> Result<Self> {
         let mut lhs: Self = Self::parse_math_call(tokens)?;
 
-        while tokens.peek1(Token::Asterisk) | tokens.peek1(Token::Slash) {
-            let is_mul = tokens.next_token()?.token() == Token::Asterisk;
+        while tokens.peek1(Token::Asterisk)
+            | tokens.peek1(Token::Slash)
+            | tokens.peek1(Token::Percent)
+        {
+            let op_token = tokens.next_token()?.token();
 
             let expr = Box::new((lhs, Self::parse_math_call(tokens)?));
-            lhs = Self::from(if is_mul {
-                AnyExpr::Mul(expr)
-            } else {
-                AnyExpr::Div(expr)
+
+            lhs = Self::from(match op_token {
+                Token::Asterisk => AnyExpr::Mul(expr),
+                Token::Slash => AnyExpr::Div(expr),
+                _ => AnyExpr::Mod(expr),
             });
         }
 

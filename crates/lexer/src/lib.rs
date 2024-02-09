@@ -83,6 +83,9 @@ pub enum Token {
     /// `/`
     Slash,
 
+    /// `%`
+    Percent,
+
     /// `:`
     Colon,
 
@@ -166,6 +169,7 @@ impl Token {
             Token::Minus,
             Token::Asterisk,
             Token::Slash,
+            Token::Percent,
             Token::Colon,
             Token::Comma,
             Token::At,
@@ -204,6 +208,7 @@ impl Token {
             Token::Minus => TokenType::Symbols("-"),
             Token::Asterisk => TokenType::Symbols("*"),
             Token::Slash => TokenType::Symbols("/"),
+            Token::Percent => TokenType::Symbols("%"),
             Token::Colon => TokenType::Symbols(":"),
             Token::Comma => TokenType::Symbols(","),
             Token::At => TokenType::Symbols("@"),

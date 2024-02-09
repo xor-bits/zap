@@ -8,11 +8,36 @@ fn main() {
     let str = r#"  
         recurse := fn(a: i32) {
             printi(a);
+            wait();
             recurse(a + 1);
+        };
+
+        fib := fn() {
+            a := 0;
+            b := 1;
+            for {
+                printi(a);
+                wait();
+
+                tmp := a + b;
+                a = b;
+                b = tmp;
+            };
+        };
+
+        fizzbuzz := fn() {
+            i := 0;
+            for {
+                fizz := i % 3;
+                printi(fizz);
+                i = i + 1;
+            };
         };
     
         main := fn() -> i32 {
-            recurse(1);
+            // fib();
+            // recurse(1);
+            fizzbuzz();
             0
             // a := 1;
             // for {

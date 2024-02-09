@@ -413,6 +413,20 @@ impl TypeCheck for ast::Expr {
                     }
                 }
             }
+            ast::AnyExpr::Mod(v) => {
+                v.0.type_check(ctx);
+                v.1.type_check(ctx);
+
+                match (
+                    ctx.types.get(v.0.ty).unwrap(),
+                    ctx.types.get(v.1.ty).unwrap(),
+                ) {
+                    (Type::I32, Type::I32) => TypeId::I32,
+                    (lhs, rhs) => {
+                        panic!("cannot `{lhs}%{rhs}`")
+                    }
+                }
+            }
             ast::AnyExpr::Call(v) => {
                 v.func.type_check(ctx);
                 for arg in v.args_mut() {

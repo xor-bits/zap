@@ -685,6 +685,15 @@ impl EmitIr for ast::Expr {
                     todo!()
                 }
             },
+            ast::AnyExpr::Mod(sides) => match sides.emit_ir(gen)? {
+                (Value::I32(lhs), Value::I32(rhs)) => {
+                    let val = gen.builder.build_int_signed_rem(lhs, rhs, "tmp").unwrap();
+                    Ok(Value::I32(val))
+                }
+                _ => {
+                    todo!()
+                }
+            },
             ast::AnyExpr::Call(call) => {
                 let func = call.func.emit_ir(gen)?;
                 let func = match func {
@@ -785,7 +794,18 @@ impl ConstEval for ast::Expr {
                 }
                 _ => todo!(),
             },
-            ast::AnyExpr::Div(_) => todo!(),
+            ast::AnyExpr::Div(sides) => match sides.eval()? {
+                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                    Ok(ConstValue::I32(lhs.wrapping_div(rhs)))
+                }
+                _ => todo!(),
+            },
+            ast::AnyExpr::Mod(sides) => match sides.eval()? {
+                (ConstValue::I32(lhs), ConstValue::I32(rhs)) => {
+                    Ok(ConstValue::I32(lhs.wrapping_rem(rhs)))
+                }
+                _ => todo!(),
+            },
             ast::AnyExpr::Call(_) => todo!(),
         }
     }
