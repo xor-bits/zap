@@ -547,11 +547,39 @@ impl From<AnyExpr> for Expr {
 
 impl Parse for Expr {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        Self::parse_eq_cmp(tokens)
+        Self::parse_or(tokens)
     }
 }
 
 impl Expr {
+    fn parse_or(tokens: &mut ParseStream) -> Result<Self> {
+        let mut lhs: Self = Self::parse_and(tokens)?;
+
+        while tokens.peek1(Token::Or) {
+            tokens.next_token()?;
+            let op = BinaryOp::Or;
+            let sides = Box::new((lhs, Self::parse_and(tokens)?));
+
+            lhs = Self::from(AnyExpr::Binary { op, sides });
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_and(tokens: &mut ParseStream) -> Result<Self> {
+        let mut lhs: Self = Self::parse_eq_cmp(tokens)?;
+
+        while tokens.peek1(Token::And) {
+            tokens.next_token()?;
+            let op = BinaryOp::And;
+            let sides = Box::new((lhs, Self::parse_eq_cmp(tokens)?));
+
+            lhs = Self::from(AnyExpr::Binary { op, sides });
+        }
+
+        Ok(lhs)
+    }
+
     fn parse_eq_cmp(tokens: &mut ParseStream) -> Result<Self> {
         let mut lhs: Self = Self::parse_ord_cmp(tokens)?;
 
