@@ -15,7 +15,7 @@ use llvm::{
         AnyValue, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
         StructValue,
     },
-    AddressSpace, OptimizationLevel,
+    AddressSpace, IntPredicate, OptimizationLevel,
 };
 use parser::{
     ast::{self, BinaryOp},
@@ -258,6 +258,7 @@ impl ModuleGen {
     fn build_return(&self, val: Value) {
         match val {
             Value::Func(_) => todo!(),
+            Value::Bool(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
             Value::I32(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
             Value::Str(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
             Value::Never => {}
@@ -283,17 +284,18 @@ impl ModuleGen {
 
 //
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum Value {
     Func(FuncValue),
     // IntLit(i128), // int literal that could be any int type (i8, i32, usize, ...)
+    Bool(IntValue<'static>),
     I32(IntValue<'static>),
     Str(StructValue<'static>),
     Never,
     None,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct FuncValue {
     // data: Option<Box<Value>>,
     fn_ptr: FunctionValue<'static>,
@@ -552,6 +554,7 @@ impl EmitIr for ast::Init {
             let addr = gen.alloca_builder.build_alloca(v_ty, var_name).unwrap();
             match v {
                 Value::Func(_) => todo!(),
+                Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Never => todo!(),
@@ -586,6 +589,7 @@ impl EmitIr for ast::Set {
             let addr = *gen.locals.last_mut().unwrap().0.get(var_name).unwrap();
             match expr.emit_ir(gen)? {
                 Value::Func(_) => todo!(),
+                Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Never => todo!(),
@@ -688,13 +692,53 @@ impl EmitIr for ast::Expr {
                         gen.builder.build_int_sub(lhs, rhs, "tmp").unwrap(),
                     )),
 
-                    _ => todo!(),
+                    (BinaryOp::Lt, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::SLT, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+                    (BinaryOp::Le, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::SLE, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+                    (BinaryOp::Gt, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::SGT, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+                    (BinaryOp::Ge, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::SGE, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+
+                    (BinaryOp::Eq, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+                    (BinaryOp::Neq, Value::I32(lhs), Value::I32(rhs)) => Ok(Value::Bool(
+                        gen.builder
+                            .build_int_compare(IntPredicate::NE, lhs, rhs, "tmp")
+                            .unwrap(),
+                    )),
+
+                    (BinaryOp::And, Value::I32(lhs), Value::I32(rhs)) => {
+                        Ok(Value::Bool(gen.builder.build_and(lhs, rhs, "tmp").unwrap()))
+                    }
+                    (BinaryOp::Or, Value::I32(lhs), Value::I32(rhs)) => {
+                        Ok(Value::Bool(gen.builder.build_or(lhs, rhs, "tmp").unwrap()))
+                    }
+
+                    (op, lhs, rhs) => todo!("{lhs:?} {op} {rhs:?}"),
                 }
             }
             ast::AnyExpr::Call(call) => {
                 let func = call.func.emit_ir(gen)?;
                 let func = match func {
                     Value::Func(f) => f,
+                    Value::Bool(_) => todo!(),
                     Value::I32(_) => todo!(),
                     Value::Str(_) => todo!(),
                     Value::Never => todo!(),
@@ -705,6 +749,7 @@ impl EmitIr for ast::Expr {
                 for arg in call.args.iter().flat_map(|a| a.iter()) {
                     let arg = match arg.emit_ir(gen)? {
                         Value::Func(_) => todo!(),
+                        Value::Bool(v) => v.into(),
                         Value::I32(v) => v.into(),
                         Value::Str(v) => v.into(),
                         Value::Never => todo!(),

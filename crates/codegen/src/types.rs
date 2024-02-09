@@ -114,8 +114,9 @@ impl AsLlvm for TypeId {
     ) -> FunctionType<'static> {
         let ctx = context();
         match gen.types.get_type(*self) {
+            Type::Bool => ctx.bool_type().fn_type(param_types, is_var_args),
             Type::I32 => ctx.i32_type().fn_type(param_types, is_var_args),
-            Type::Str => todo!(),
+            Type::Str => get_or_init_str(gen).fn_type(param_types, is_var_args),
             Type::Void => ctx.void_type().fn_type(param_types, is_var_args),
             Type::Func(_f) => ctx.void_type().fn_type(param_types, is_var_args),
         }
@@ -124,20 +125,9 @@ impl AsLlvm for TypeId {
     fn as_llvm(&self, gen: &ModuleGen) -> Option<BasicTypeEnum<'static>> {
         let ctx = context();
         match gen.types.get_type(*self) {
+            Type::Bool => Some(ctx.bool_type().into()),
             Type::I32 => Some(ctx.i32_type().into()),
-            Type::Str => Some(
-                get_or_init_struct(ctx, "str", |s| {
-                    s.set_body(
-                        &[
-                            ctx.ptr_sized_int_type(gen.engine.get_target_data(), None)
-                                .into(),
-                            ctx.i8_type().ptr_type(AddressSpace::default()).into(),
-                        ],
-                        false,
-                    );
-                })
-                .into(),
-            ),
+            Type::Str => Some(get_or_init_str(gen).into()),
             Type::Void => None,
             Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
@@ -146,24 +136,27 @@ impl AsLlvm for TypeId {
     fn as_llvm_meta(&self, gen: &ModuleGen) -> Option<BasicMetadataTypeEnum<'static>> {
         let ctx = context();
         match gen.types.get_type(*self) {
+            Type::Bool => Some(ctx.bool_type().into()),
             Type::I32 => Some(ctx.i32_type().into()),
-            Type::Str => Some(
-                get_or_init_struct(ctx, "str", |s| {
-                    s.set_body(
-                        &[
-                            ctx.ptr_sized_int_type(gen.engine.get_target_data(), None)
-                                .into(),
-                            ctx.i8_type().ptr_type(AddressSpace::default()).into(),
-                        ],
-                        false,
-                    );
-                })
-                .into(),
-            ),
+            Type::Str => Some(get_or_init_str(gen).into()),
             Type::Void => None,
             Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }
+}
+
+pub fn get_or_init_str(gen: &ModuleGen) -> StructType<'static> {
+    get_or_init_struct(gen.ctx, "str", |s| {
+        s.set_body(
+            &[
+                gen.ctx
+                    .ptr_sized_int_type(gen.engine.get_target_data(), None)
+                    .into(),
+                gen.ctx.i8_type().ptr_type(AddressSpace::default()).into(),
+            ],
+            false,
+        );
+    })
 }
 
 pub fn get_or_init_struct<'a>(

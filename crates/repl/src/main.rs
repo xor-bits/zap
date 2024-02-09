@@ -29,7 +29,7 @@ fn main() {
             i := 0;
             for {
                 fizz := i % 3 == 0;
-                printi(fizz);
+                printb(fizz);
                 i = i + 1;
             };
         };
@@ -53,6 +53,7 @@ fn main() {
     let mut compiler = Compiler::new();
 
     compiler.add("sum", |a: i32, b: i32| a + b).unwrap();
+    compiler.add("printb", |a: bool| println!("{a}")).unwrap();
     compiler.add("printi", |a: i32| println!("{a}")).unwrap();
     compiler.add("prints", |a: Str| println!("{a}")).unwrap();
     compiler

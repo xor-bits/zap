@@ -23,6 +23,7 @@ pub struct Func {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I32,
     Str,
     Void,
@@ -42,6 +43,7 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Type::Bool => write!(f, "bool"),
             Type::I32 => write!(f, "i32"),
             Type::Str => write!(f, "str"),
             Type::Void => write!(f, "void"),
@@ -186,6 +188,7 @@ impl Types {
 
     pub fn get(&self, id: TypeId) -> Option<&Type> {
         match id {
+            TypeId::Bool => Some(&Type::Bool),
             TypeId::I32 => Some(&Type::I32),
             TypeId::Str => Some(&Type::Str),
             TypeId::Void => Some(&Type::Void),
@@ -375,6 +378,17 @@ impl TypeCheck for ast::Expr {
 
                     (BinaryOp::Add, Type::I32, Type::I32) => TypeId::I32,
                     (BinaryOp::Sub, Type::I32, Type::I32) => TypeId::I32,
+
+                    (BinaryOp::Lt, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::Le, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::Gt, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::Ge, Type::I32, Type::I32) => TypeId::Bool,
+
+                    (BinaryOp::Eq, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::Neq, Type::I32, Type::I32) => TypeId::Bool,
+
+                    (BinaryOp::And, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::Or, Type::I32, Type::I32) => TypeId::Bool,
 
                     (op, lhs, rhs) => {
                         panic!("cannot `{lhs} {op} {rhs}`")
@@ -619,6 +633,7 @@ impl fmt::Display for TypeDisplay<'_> {
         // return Ok(());
         let ty = self.0.types.get(self.1).unwrap();
         match ty {
+            Type::Bool => write!(f, "bool")?,
             Type::I32 => write!(f, "i32")?,
             Type::Str => write!(f, "str")?,
             Type::Void => write!(f, "void")?,

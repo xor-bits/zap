@@ -34,6 +34,10 @@ pub trait AsTypeId {
     const TYPE_ID: TypeId;
 }
 
+impl AsTypeId for bool {
+    const TYPE_ID: TypeId = TypeId::Bool;
+}
+
 impl AsTypeId for i32 {
     const TYPE_ID: TypeId = TypeId::I32;
 }
@@ -48,6 +52,7 @@ impl AsTypeId for () {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum TypeId {
+    Bool,
     I32,
     Str,
     Void,
@@ -89,6 +94,7 @@ impl TypeId {
 impl fmt::Display for TypeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            TypeId::Bool => write!(f, "bool"),
             TypeId::I32 => write!(f, "i32"),
             TypeId::Str => write!(f, "str"),
             TypeId::Void => write!(f, "void"),
