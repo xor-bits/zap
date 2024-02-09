@@ -344,6 +344,7 @@ impl Parse for Block {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
     Init(Init),
+    Set(Set),
     Expr(StmtExpr),
     Return(Return),
 }
@@ -355,7 +356,20 @@ impl Parse for Stmt {
             tokens.top2().map(|t| t.token()),
         ) {
             (Some(Token::Ident), Some(Token::Walrus | Token::Assign | Token::Comma)) => {
-                Ok(Self::Init(tokens.parse()?))
+                let targets = tokens.parse()?;
+                if tokens.peek1(Token::Walrus) {
+                    Ok(Self::Init(Init {
+                        targets,
+                        walrus: tokens.parse()?,
+                        exprs: tokens.parse()?,
+                    }))
+                } else {
+                    Ok(Self::Set(Set {
+                        targets,
+                        assign: tokens.parse()?,
+                        exprs: tokens.parse()?,
+                    }))
+                }
             }
             (Some(Token::Return), _) => Ok(Self::Return(tokens.parse()?)),
             _ => Ok(Self::Expr(tokens.parse()?)),
@@ -370,6 +384,16 @@ impl Parse for Stmt {
 pub struct Init {
     pub targets: CommaSeparated<Target>,
     pub walrus: Walrus,
+    pub exprs: CommaSeparated<Expr>,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+pub struct Set {
+    pub targets: CommaSeparated<Target>,
+    pub assign: Assign,
     pub exprs: CommaSeparated<Expr>,
 }
 

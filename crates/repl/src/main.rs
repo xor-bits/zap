@@ -5,7 +5,10 @@ use compiler::{Compiler, Str};
 fn main() {
     let str = r#"  
         main := fn() -> i32 {
-            print("Hello, world!");
+            a := "test";
+            print(a);
+            a = "another";
+            print(a);
             sum(32, 32)
         }
     "#;

@@ -11,7 +11,8 @@ use llvm::{
     execution_engine::ExecutionEngine,
     module::Module,
     values::{
-        AnyValue, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, StructValue,
+        AnyValue, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+        StructValue,
     },
     AddressSpace, OptimizationLevel,
 };
@@ -87,7 +88,7 @@ pub struct ModuleGen {
 
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
-    locals: Vec<HashMap<Rc<str>, Value>>,
+    locals: Vec<HashMap<Rc<str>, PointerValue<'static>>>,
 }
 
 impl ModuleGen {
@@ -374,7 +375,12 @@ impl EmitIr for ast::Func {
             .zip(self.args.iter().flat_map(|a| a.iter()))
         {
             if let BasicValueEnum::IntValue(int) = param {
-                locals.insert(arg.id.value.as_str().into(), Value::I32(int));
+                let addr = gen
+                    .builder
+                    .build_alloca(gen.ctx.i32_type(), &arg.id.value)
+                    .unwrap();
+                gen.builder.build_store(addr, int).unwrap();
+                locals.insert(arg.id.value.as_str().into(), addr);
             } else {
                 todo!()
             }
@@ -428,6 +434,10 @@ impl EmitIr for ast::Stmt {
                 init.emit_ir(gen)?;
                 Ok(Value::None)
             }
+            ast::Stmt::Set(set) => {
+                set.emit_ir(gen)?;
+                Ok(Value::None)
+            }
             ast::Stmt::Expr(expr) => expr.expr.emit_ir(gen),
             ast::Stmt::Return(expr) => {
                 let expr = expr.expr.emit_ir(gen)?;
@@ -449,9 +459,45 @@ impl EmitIr for ast::Init {
             gen.namespace.push_str(var_name);
 
             let v = expr.emit_ir(gen)?;
+            let v_ty = expr.ty.as_llvm(gen).unwrap();
+
+            let addr = gen.builder.build_alloca(v_ty, var_name).unwrap();
+            match v {
+                Value::Func(_) => todo!(),
+                Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                Value::Never => todo!(),
+                Value::None => todo!(),
+            }
 
             // shadow the old var
-            _ = gen.statics.insert(var_name.into(), v);
+            _ = gen.locals.last_mut().unwrap().insert(var_name.into(), addr);
+
+            gen.namespace
+                .truncate(gen.namespace.len() - 2 - var_name.len());
+        }
+        Ok(())
+    }
+}
+
+impl EmitIr for ast::Set {
+    type Val = ();
+
+    fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        assert_eq!(self.targets.iter().len(), self.exprs.iter().len());
+        for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
+            let var_name = target.path.ident.value.as_str();
+            gen.namespace.push_str("::");
+            gen.namespace.push_str(var_name);
+
+            let addr = *gen.locals.last_mut().unwrap().get(var_name).unwrap();
+            match expr.emit_ir(gen)? {
+                Value::Func(_) => todo!(),
+                Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                Value::Never => todo!(),
+                Value::None => todo!(),
+            }
 
             gen.namespace
                 .truncate(gen.namespace.len() - 2 - var_name.len());
@@ -508,8 +554,17 @@ impl EmitIr for ast::Expr {
             }
             ast::AnyExpr::Load(var) => {
                 if let Some(locals) = gen.locals.last() {
-                    if let Some(val) = locals.get(var.value.as_str()).cloned() {
-                        return Ok(val);
+                    if let Some(addr) = locals.get(var.value.as_str()).cloned() {
+                        let pointee_ty = self.ty.as_llvm(gen).unwrap();
+                        let val = gen.builder.build_load(pointee_ty, addr, "tmp").unwrap();
+                        return match val {
+                            BasicValueEnum::ArrayValue(_) => todo!(),
+                            BasicValueEnum::IntValue(v) => Ok(Value::I32(v)),
+                            BasicValueEnum::FloatValue(_) => todo!(),
+                            BasicValueEnum::PointerValue(_) => todo!(),
+                            BasicValueEnum::StructValue(s) => Ok(Value::Str(s)), // FIXME: check this
+                            BasicValueEnum::VectorValue(_) => todo!(),
+                        };
                     }
                 }
 
@@ -688,6 +743,7 @@ impl ConstEval for ast::Stmt {
     fn eval(&self) -> Result<Self::Val> {
         match self {
             ast::Stmt::Init(_) => todo!(),
+            ast::Stmt::Set(_) => todo!(),
             ast::Stmt::Expr(expr) => expr.expr.eval(),
             ast::Stmt::Return(_) => todo!(),
         }

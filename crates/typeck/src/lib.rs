@@ -430,6 +430,7 @@ impl TypeCheck for ast::Block {
             if let Some(last) = self.stmts.last() {
                 self.ty = match last {
                     ast::Stmt::Init(_) => TypeId::Void,
+                    ast::Stmt::Set(_) => TypeId::Void,
                     ast::Stmt::Expr(v) => v.expr.ty,
                     ast::Stmt::Return(v) => v.expr.ty,
                 };
@@ -442,9 +443,27 @@ impl TypeCheck for ast::Stmt {
     fn type_check(&mut self, ctx: &mut Context) {
         match self {
             ast::Stmt::Init(v) => {
+                assert_eq!(v.targets.iter().len(), v.exprs.iter().len());
                 for (target, expr) in v.targets.iter().zip(v.exprs.iter_mut()) {
                     expr.type_check(ctx);
                     ctx.vars.init(&target.path.ident.value, expr.ty);
+                }
+            }
+            ast::Stmt::Set(v) => {
+                assert_eq!(v.targets.iter().len(), v.exprs.iter().len());
+                for (target, expr) in v.targets.iter().zip(v.exprs.iter_mut()) {
+                    expr.type_check(ctx);
+                    let current_ty = ctx
+                        .vars
+                        .get(&target.path.ident.value)
+                        .expect("variable not found");
+                    assert_eq!(
+                        expr.ty,
+                        current_ty,
+                        "cannot assign `{}` to `{}`",
+                        TypeDisplay(ctx, expr.ty),
+                        TypeDisplay(ctx, current_ty)
+                    );
                 }
             }
             ast::Stmt::Expr(v) => v.expr.type_check(ctx),

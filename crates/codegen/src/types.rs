@@ -3,7 +3,7 @@ use std::{slice, str};
 
 use inkwell::{
     context::Context,
-    types::{BasicMetadataTypeEnum, FunctionType, StructType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     AddressSpace,
 };
 use parser::{AsTypeId, TypeId};
@@ -100,6 +100,8 @@ pub trait AsLlvm {
         is_var_args: bool,
     ) -> FunctionType<'static>;
 
+    fn as_llvm(&self, gen: &ModuleGen) -> Option<BasicTypeEnum<'static>>;
+
     fn as_llvm_meta(&self, gen: &ModuleGen) -> Option<BasicMetadataTypeEnum<'static>>;
 }
 
@@ -116,6 +118,28 @@ impl AsLlvm for TypeId {
             Type::Str => todo!(),
             Type::Void => ctx.void_type().fn_type(param_types, is_var_args),
             Type::Func(_f) => ctx.void_type().fn_type(param_types, is_var_args),
+        }
+    }
+
+    fn as_llvm(&self, gen: &ModuleGen) -> Option<BasicTypeEnum<'static>> {
+        let ctx = context();
+        match gen.types.get_type(*self) {
+            Type::I32 => Some(ctx.i32_type().into()),
+            Type::Str => Some(
+                get_or_init_struct(ctx, "str", |s| {
+                    s.set_body(
+                        &[
+                            ctx.ptr_sized_int_type(gen.engine.get_target_data(), None)
+                                .into(),
+                            ctx.i8_type().ptr_type(AddressSpace::default()).into(),
+                        ],
+                        false,
+                    );
+                })
+                .into(),
+            ),
+            Type::Void => None,
+            Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }
 
