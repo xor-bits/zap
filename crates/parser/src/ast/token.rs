@@ -132,6 +132,9 @@ simple_tokens! {
     /// `if`
     If,
 
+    /// `else`
+    Else,
+
     /// `for`
     For,
 

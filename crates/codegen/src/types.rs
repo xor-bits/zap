@@ -118,6 +118,7 @@ impl AsLlvm for TypeId {
             Type::I32 => ctx.i32_type().fn_type(param_types, is_var_args),
             Type::Str => get_or_init_str(gen).fn_type(param_types, is_var_args),
             Type::Void => ctx.void_type().fn_type(param_types, is_var_args),
+            Type::Never => ctx.void_type().fn_type(param_types, is_var_args),
             Type::Func(_f) => ctx.void_type().fn_type(param_types, is_var_args),
         }
     }
@@ -129,6 +130,7 @@ impl AsLlvm for TypeId {
             Type::I32 => Some(ctx.i32_type().into()),
             Type::Str => Some(get_or_init_str(gen).into()),
             Type::Void => None,
+            Type::Never => None,
             Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }
@@ -140,6 +142,7 @@ impl AsLlvm for TypeId {
             Type::I32 => Some(ctx.i32_type().into()),
             Type::Str => Some(get_or_init_str(gen).into()),
             Type::Void => None,
+            Type::Never => None,
             Type::Func(_func_id) => None, // Some(get_or_init_struct(ctx, &format!("[anon_func_{}]", func_id.0)).into()),
         }
     }

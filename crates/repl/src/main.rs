@@ -26,12 +26,20 @@ fn main() {
         // };
 
         fizzbuzz := fn() {
-            i := 0;
+            i := 1;
             for {
-                fizz := i % 3 == 0;
-                if fizz {
+                f := i % 3 == 0;
+                b := i % 5 == 0;
+                if f && b {
+                    prints("fizzbuzz");
+                } else if f {
+                    prints("fizz");
+                } else if b {
+                    prints("buzz");
+                } else {
                     printi(i);
                 };
+                wait();
                 i = i + 1;
             };
         };

@@ -27,6 +27,7 @@ pub enum Type {
     I32,
     Str,
     Void,
+    Never,
     Func(FuncId),
     // ExternFunc, // a function that can take any arguments
 }
@@ -47,6 +48,7 @@ impl fmt::Display for Type {
             Type::I32 => write!(f, "i32"),
             Type::Str => write!(f, "str"),
             Type::Void => write!(f, "void"),
+            Type::Never => write!(f, "!"),
             Type::Func(id) => write!(f, "[{}]", id.0),
         }
     }
@@ -186,12 +188,14 @@ impl Types {
         }
     }
 
+    #[track_caller]
     pub fn get(&self, id: TypeId) -> Option<&Type> {
         match id {
             TypeId::Bool => Some(&Type::Bool),
             TypeId::I32 => Some(&Type::I32),
             TypeId::Str => Some(&Type::Str),
             TypeId::Void => Some(&Type::Void),
+            TypeId::Never => Some(&Type::Never),
             TypeId::Unknown => unreachable!(),
             TypeId::Other(id) => self.types.get(id as usize),
         }
@@ -271,6 +275,7 @@ impl Scope {
 pub trait TypeCheck {
     fn type_check(&mut self, ctx: &mut Context);
 
+    #[allow(unused)]
     fn type_check_partial(&mut self, ctx: &mut Context) {}
 }
 
@@ -387,8 +392,8 @@ impl TypeCheck for ast::Expr {
                     (BinaryOp::Eq, Type::I32, Type::I32) => TypeId::Bool,
                     (BinaryOp::Neq, Type::I32, Type::I32) => TypeId::Bool,
 
-                    (BinaryOp::And, Type::I32, Type::I32) => TypeId::Bool,
-                    (BinaryOp::Or, Type::I32, Type::I32) => TypeId::Bool,
+                    (BinaryOp::And, Type::Bool, Type::Bool) => TypeId::Bool,
+                    (BinaryOp::Or, Type::Bool, Type::Bool) => TypeId::Bool,
 
                     (op, lhs, rhs) => {
                         panic!("cannot `{lhs} {op} {rhs}`")
@@ -440,13 +445,13 @@ impl TypeCheck for ast::Block {
             stmt.type_check(ctx);
         }
 
-        self.ty = TypeId::Void;
+        self.ty = TypeId::Never;
         if self.auto_return {
             if let Some(last) = self.stmts.last() {
                 self.ty = match last {
                     ast::Stmt::Init(_) => TypeId::Void,
                     ast::Stmt::Set(_) => TypeId::Void,
-                    ast::Stmt::If(_) => TypeId::Void,
+                    ast::Stmt::Cond(_) => TypeId::Void,
                     ast::Stmt::Loop(_) => TypeId::Void,
                     ast::Stmt::Expr(v) => v.expr.ty,
                     ast::Stmt::Return(v) => v.expr.ty,
@@ -483,7 +488,7 @@ impl TypeCheck for ast::Stmt {
                     );
                 }
             }
-            ast::Stmt::If(v) => v.type_check(ctx),
+            ast::Stmt::Cond(v) => v.type_check(ctx),
             ast::Stmt::Loop(v) => v.type_check(ctx),
             ast::Stmt::Expr(v) => v.expr.type_check(ctx),
             ast::Stmt::Return(v) => {
@@ -494,13 +499,26 @@ impl TypeCheck for ast::Stmt {
     }
 }
 
-impl TypeCheck for ast::If {
+impl TypeCheck for ast::Cond {
     fn type_check(&mut self, ctx: &mut Context) {
-        self.check.type_check(ctx);
-        assert_eq!(self.check.ty, TypeId::Bool);
+        self.if_first.check.type_check(ctx);
+        assert_eq!(self.if_first.check.ty, TypeId::Bool);
 
-        self.block.type_check(ctx);
-        assert_eq!(self.block.ty, TypeId::Void);
+        self.if_first.block.type_check(ctx);
+        assert_eq!(self.if_first.block.ty, TypeId::Void);
+
+        for else_if in self.else_ifs.iter_mut() {
+            else_if.inner.check.type_check(ctx);
+            assert_eq!(else_if.inner.check.ty, TypeId::Bool);
+
+            else_if.inner.block.type_check(ctx);
+            assert_eq!(else_if.inner.block.ty, TypeId::Void);
+        }
+
+        if let Some(else_last) = self.else_last.as_mut() {
+            else_last.block.type_check(ctx);
+            assert_eq!(else_last.block.ty, TypeId::Void);
+        }
     }
 }
 
@@ -553,6 +571,7 @@ impl TypeCheck for ast::Proto {
 
         let func_id = ctx.funcs.push(Func { ret, args });
         let type_id = ctx.types.push(Type::Func(func_id));
+        assert_ne!(type_id, TypeId::Unknown);
 
         self.ty = type_id;
     }
@@ -565,6 +584,7 @@ impl TypeCheck for ast::Func {
         // self.proto.type_check(ctx);
 
         let type_id = self.proto.ty;
+        assert_ne!(type_id, TypeId::Unknown);
 
         let func_id = match ctx.types.get(type_id) {
             Some(Type::Func(func_id)) => *func_id,
@@ -584,7 +604,14 @@ impl TypeCheck for ast::Func {
 
         // type check the scope
         self.block.type_check(ctx);
-        assert_eq!(self.block.ty, ctx.vars.return_ty(), "invalid return type");
+        assert_eq!(
+            self.block.ty,
+            ctx.vars.return_ty(),
+            "invalid return type in function `{}`, expected `{}`, got `{}`",
+            TypeDisplay(ctx, self.proto.ty),
+            TypeDisplay(ctx, ctx.vars.return_ty()),
+            TypeDisplay(ctx, self.block.ty),
+        );
 
         // finish the scope
         ctx.vars.pop();
@@ -649,6 +676,7 @@ impl fmt::Display for TypeDisplay<'_> {
             Type::I32 => write!(f, "i32")?,
             Type::Str => write!(f, "str")?,
             Type::Void => write!(f, "void")?,
+            Type::Never => write!(f, "!")?,
             Type::Func(v) => write!(f, "<{}>", FuncDisplay(self.0, *v))?,
         }
         Ok(())

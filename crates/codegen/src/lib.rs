@@ -501,7 +501,7 @@ impl EmitIr for ast::Stmt {
                 set.emit_ir(gen)?;
                 Ok(Value::None)
             }
-            ast::Stmt::If(v) => {
+            ast::Stmt::Cond(v) => {
                 v.emit_ir(gen)?;
                 Ok(Value::None)
             }
@@ -519,26 +519,77 @@ impl EmitIr for ast::Stmt {
     }
 }
 
-impl EmitIr for ast::If {
+impl EmitIr for ast::Cond {
     type Val = ();
 
     fn emit_ir(&self, gen: &mut ModuleGen) -> Result<Self::Val> {
+        /*
+            if b0 {
+                a0
+            } else if b1 {
+                a1
+            } else {
+                a2
+            }
+
+            =>
+
+            if b0 {
+                a0
+            } else {
+                if b1 {
+                    a1
+                } else {
+                    a2
+                }
+            }
+
+            =>
+
+            br b0, if-b0, else-b0
+
+            if-b0:
+                a0
+                jmp done
+            else-b0:
+                br b1, if-b1, else-b1
+            if-b1:
+                a1
+                jmp done
+            else-b1:
+                a2
+                jmp done
+
+            done:
+        */
+
         let current_func = gen.locals.last().unwrap().1;
+        let done_block = gen.ctx.append_basic_block(current_func, "branch-done");
 
-        let then_block = gen.ctx.append_basic_block(current_func, "branch");
-        let else_block = gen.ctx.append_basic_block(current_func, "branch-after");
+        for test in iter::once(&self.if_first).chain(self.else_ifs.iter().map(|s| &s.inner)) {
+            let then_block = gen.ctx.append_basic_block(current_func, "branch-then");
+            let else_block = gen.ctx.append_basic_block(current_func, "branch-else");
 
-        let Value::Bool(bool) = self.check.emit_ir(gen)? else {
-            unreachable!("{:?}", self.check)
-        };
-        gen.builder
-            .build_conditional_branch(bool, then_block, else_block)
-            .unwrap();
-        gen.builder.position_at_end(then_block);
+            let Value::Bool(bool) = test.check.emit_ir(gen)? else {
+                unreachable!("{:?}", test.check)
+            };
+            gen.builder
+                .build_conditional_branch(bool, then_block, else_block)
+                .unwrap();
 
-        self.block.emit_ir(gen)?;
-        gen.builder.build_unconditional_branch(else_block).unwrap();
-        gen.builder.position_at_end(else_block);
+            gen.builder.position_at_end(then_block);
+
+            test.block.emit_ir(gen)?;
+            gen.builder.build_unconditional_branch(done_block).unwrap();
+            gen.builder.position_at_end(else_block);
+        }
+
+        if let Some(else_last) = self.else_last.as_ref() {
+            else_last.block.emit_ir(gen)?;
+        }
+
+        gen.builder.build_unconditional_branch(done_block).unwrap();
+        gen.builder.position_at_end(done_block);
 
         Ok(())
     }
@@ -688,6 +739,7 @@ impl EmitIr for ast::Expr {
                             TypeId::I32 => Ok(Value::I32(val.into_int_value())),
                             TypeId::Str => Ok(Value::Str(val.into_struct_value())),
                             TypeId::Void => Ok(Value::None),
+                            TypeId::Never => Ok(Value::Never),
                             TypeId::Unknown => unreachable!(),
                             TypeId::Other(_) => todo!(),
                         };
@@ -753,10 +805,10 @@ impl EmitIr for ast::Expr {
                             .unwrap(),
                     )),
 
-                    (BinaryOp::And, Value::I32(lhs), Value::I32(rhs)) => {
+                    (BinaryOp::And, Value::Bool(lhs), Value::Bool(rhs)) => {
                         Ok(Value::Bool(gen.builder.build_and(lhs, rhs, "tmp").unwrap()))
                     }
-                    (BinaryOp::Or, Value::I32(lhs), Value::I32(rhs)) => {
+                    (BinaryOp::Or, Value::Bool(lhs), Value::Bool(rhs)) => {
                         Ok(Value::Bool(gen.builder.build_or(lhs, rhs, "tmp").unwrap()))
                     }
 
@@ -906,7 +958,7 @@ impl ConstEval for ast::Stmt {
         match self {
             ast::Stmt::Init(_) => todo!(),
             ast::Stmt::Set(_) => todo!(),
-            ast::Stmt::If(_) => todo!(),
+            ast::Stmt::Cond(_) => todo!(),
             ast::Stmt::Loop(_) => todo!(),
             ast::Stmt::Expr(expr) => expr.expr.eval(),
             ast::Stmt::Return(_) => todo!(),

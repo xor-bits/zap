@@ -134,6 +134,9 @@ pub enum Token {
     /// `if`
     If,
 
+    /// `else`
+    Else,
+
     /// `for`
     For,
 
@@ -195,6 +198,7 @@ impl Token {
             Token::RArrow,
             Token::Fn,
             Token::If,
+            Token::Else,
             Token::For,
             Token::Return,
             Token::Struct,
@@ -237,6 +241,7 @@ impl Token {
             Token::RArrow => TokenType::Symbols("->"),
             Token::Fn => TokenType::Keyword("fn"),
             Token::If => TokenType::Keyword("if"),
+            Token::Else => TokenType::Keyword("else"),
             Token::For => TokenType::Keyword("for"),
             Token::Return => TokenType::Keyword("return"),
             Token::Struct => TokenType::Keyword("struct"),

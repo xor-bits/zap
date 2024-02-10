@@ -347,7 +347,7 @@ impl Parse for Block {
 pub enum Stmt {
     Init(Init),
     Set(Set),
-    If(If),
+    Cond(Cond),
     Loop(Loop),
     Expr(StmtExpr),
     Return(Return),
@@ -375,7 +375,7 @@ impl Parse for Stmt {
                     }))
                 }
             }
-            (Some(Token::If), _) => Ok(Self::If(tokens.parse()?)),
+            (Some(Token::If), _) => Ok(Self::Cond(tokens.parse()?)),
             (Some(Token::For), _) => Ok(Self::Loop(tokens.parse()?)),
             (Some(Token::Return), _) => Ok(Self::Return(tokens.parse()?)),
             _ => Ok(Self::Expr(tokens.parse()?)),
@@ -384,10 +384,70 @@ impl Parse for Stmt {
 }
 
 #[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cond {
+    pub if_first: If,
+    pub else_ifs: Vec<ElseIf>,
+    pub else_last: Option<Else>,
+}
+
+impl Parse for Cond {
+    fn parse(tokens: &mut ParseStream) -> Result<Self> {
+        let if_first = tokens.parse()?;
+
+        let mut else_ifs = Vec::new();
+        let mut else_last = None;
+        while tokens.peek1(Token::Else) {
+            let else_token: token::Else = tokens.parse()?;
+
+            if !tokens.peek1(Token::If) {
+                // the last check
+                else_last = Some(Else {
+                    else_token,
+                    block: tokens.parse()?,
+                });
+                break;
+            }
+
+            else_ifs.push(ElseIf {
+                else_token,
+                inner: tokens.parse()?,
+            });
+        }
+
+        Ok(Self {
+            if_first,
+            else_ifs,
+            else_last,
+        })
+    }
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct If {
     pub if_token: token::If,
     pub check: Expr,
+    pub block: Block,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElseIf {
+    pub else_token: token::Else,
+    pub inner: If,
+}
+
+//
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Else {
+    pub else_token: token::Else,
     pub block: Block,
 }
 

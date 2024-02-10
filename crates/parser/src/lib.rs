@@ -49,17 +49,36 @@ impl AsTypeId for () {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 #[repr(u8)]
 pub enum TypeId {
     Bool,
     I32,
     Str,
     Void,
+    Never, // never matches everything
     #[default]
     Unknown,
     Other(u32),
 }
+
+impl PartialEq for TypeId {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TypeId::Bool, TypeId::Bool) => true,
+            (TypeId::I32, TypeId::I32) => true,
+            (TypeId::Str, TypeId::Str) => true,
+            (TypeId::Void, TypeId::Void) => true,
+            (TypeId::Never, _) => true,
+            (_, TypeId::Never) => true,
+            (TypeId::Unknown, TypeId::Unknown) => true,
+            (TypeId::Other(l), TypeId::Other(r)) => l == r,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for TypeId {}
 
 impl TypeId {
     pub fn from_type<T: AsTypeId>() -> Self {
@@ -98,6 +117,7 @@ impl fmt::Display for TypeId {
             TypeId::I32 => write!(f, "i32"),
             TypeId::Str => write!(f, "str"),
             TypeId::Void => write!(f, "void"),
+            TypeId::Never => write!(f, "!"),
             TypeId::Unknown => write!(f, "unknown"),
             TypeId::Other(id) => write!(f, "[{id}]"),
         }
