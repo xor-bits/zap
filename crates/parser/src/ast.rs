@@ -483,10 +483,28 @@ pub struct Set {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Parse)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Return {
+    pub ty: TypeId,
     pub return_kw: token::Return,
-    pub expr: Expr,
+    pub expr: Option<Expr>,
+}
+
+impl Parse for Return {
+    fn parse(tokens: &mut ParseStream) -> Result<Self> {
+        let return_kw = tokens.parse()?;
+        let expr = if tokens.peek1(Token::Semi) {
+            None
+        } else {
+            Some(tokens.parse()?)
+        };
+
+        Ok(Return {
+            ty: TypeId::Unknown,
+            return_kw,
+            expr,
+        })
+    }
 }
 
 //

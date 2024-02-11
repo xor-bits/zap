@@ -10,6 +10,8 @@ use std::{
 use codegen::Str;
 use compiler::Compiler;
 
+//
+
 #[test]
 fn fizz_buzz() {
     let source = r#"
@@ -26,6 +28,9 @@ fn fizz_buzz() {
                     prints("buzz");
                 } else {
                     printi(i);
+                };
+                if i >= 5 {
+                    return;
                 };
                 wait();
                 i = i + 1;

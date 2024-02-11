@@ -454,7 +454,7 @@ impl TypeCheck for ast::Block {
                     ast::Stmt::Cond(_) => TypeId::Void,
                     ast::Stmt::Loop(_) => TypeId::Void,
                     ast::Stmt::Expr(v) => v.expr.ty,
-                    ast::Stmt::Return(v) => v.expr.ty,
+                    ast::Stmt::Return(v) => v.ty,
                 };
             }
         }
@@ -492,8 +492,13 @@ impl TypeCheck for ast::Stmt {
             ast::Stmt::Loop(v) => v.type_check(ctx),
             ast::Stmt::Expr(v) => v.expr.type_check(ctx),
             ast::Stmt::Return(v) => {
-                v.expr.type_check(ctx);
-                assert_eq!(v.expr.ty, ctx.vars.return_ty(), "invalid return type");
+                if let Some(expr) = v.expr.as_mut() {
+                    expr.type_check(ctx);
+                    v.ty = expr.ty;
+                } else {
+                    v.ty = TypeId::Void;
+                }
+                assert_eq!(v.ty, ctx.vars.return_ty(), "invalid return type");
             }
         }
     }

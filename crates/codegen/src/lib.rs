@@ -162,7 +162,7 @@ impl ModuleGen {
             Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
             Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
             Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
-            None => Ok(Value::None),
+            None => Ok(Value::Void),
         }?;
 
         self.build_return(val);
@@ -241,7 +241,7 @@ impl ModuleGen {
             Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
             Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
             Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
-            None => Ok(Value::None),
+            None => Ok(Value::Void),
         }?;
 
         self.build_return(val);
@@ -262,7 +262,7 @@ impl ModuleGen {
             Value::I32(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
             Value::Str(v) => _ = self.builder.build_return(Some(&v)).unwrap(),
             Value::Never => {}
-            Value::None => _ = self.builder.build_return(None).unwrap(),
+            Value::Void => _ = self.builder.build_return(None).unwrap(),
         };
     }
 
@@ -292,7 +292,57 @@ enum Value {
     I32(IntValue<'static>),
     Str(StructValue<'static>),
     Never,
-    None,
+    Void,
+}
+
+impl Value {
+    /// Returns `true` if the value is [`Func`].
+    ///
+    /// [`Func`]: Value::Func
+    #[must_use]
+    fn is_func(&self) -> bool {
+        matches!(self, Self::Func(..))
+    }
+
+    /// Returns `true` if the value is [`Bool`].
+    ///
+    /// [`Bool`]: Value::Bool
+    #[must_use]
+    fn is_bool(&self) -> bool {
+        matches!(self, Self::Bool(..))
+    }
+
+    /// Returns `true` if the value is [`I32`].
+    ///
+    /// [`I32`]: Value::I32
+    #[must_use]
+    fn is_i32(&self) -> bool {
+        matches!(self, Self::I32(..))
+    }
+
+    /// Returns `true` if the value is [`Str`].
+    ///
+    /// [`Str`]: Value::Str
+    #[must_use]
+    fn is_str(&self) -> bool {
+        matches!(self, Self::Str(..))
+    }
+
+    /// Returns `true` if the value is [`Never`].
+    ///
+    /// [`Never`]: Value::Never
+    #[must_use]
+    fn is_never(&self) -> bool {
+        matches!(self, Self::Never)
+    }
+
+    /// Returns `true` if the value is [`Void`].
+    ///
+    /// [`Void`]: Value::Void
+    #[must_use]
+    fn is_void(&self) -> bool {
+        matches!(self, Self::Void)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -481,10 +531,10 @@ impl EmitIr for ast::Block {
         }
 
         if !self.auto_return {
-            return Ok(Value::None);
+            return Ok(Value::Void);
         }
 
-        Ok(last.unwrap_or(Value::None))
+        Ok(last.unwrap_or(Value::Void))
     }
 }
 
@@ -495,24 +545,28 @@ impl EmitIr for ast::Stmt {
         match self {
             ast::Stmt::Init(init) => {
                 init.emit_ir(gen)?;
-                Ok(Value::None)
+                Ok(Value::Void)
             }
             ast::Stmt::Set(set) => {
                 set.emit_ir(gen)?;
-                Ok(Value::None)
+                Ok(Value::Void)
             }
             ast::Stmt::Cond(v) => {
                 v.emit_ir(gen)?;
-                Ok(Value::None)
+                Ok(Value::Void)
             }
             ast::Stmt::Loop(l) => {
                 l.emit_ir(gen)?;
-                Ok(Value::None)
+                Ok(Value::Void)
             }
             ast::Stmt::Expr(expr) => expr.expr.emit_ir(gen),
             ast::Stmt::Return(expr) => {
-                let expr = expr.expr.emit_ir(gen)?;
-                gen.build_return(expr);
+                if let Some(expr) = expr.expr.as_ref() {
+                    let val = expr.emit_ir(gen)?;
+                    gen.build_return(val);
+                } else {
+                    gen.build_return(Value::Void);
+                }
                 Ok(Value::Never)
             }
         }
@@ -566,6 +620,7 @@ impl EmitIr for ast::Cond {
         let current_func = gen.locals.last().unwrap().1;
         let done_block = gen.ctx.append_basic_block(current_func, "branch-done");
 
+        let mut last_val = None;
         for test in iter::once(&self.if_first).chain(self.else_ifs.iter().map(|s| &s.inner)) {
             let then_block = gen.ctx.append_basic_block(current_func, "branch-then");
             let else_block = gen.ctx.append_basic_block(current_func, "branch-else");
@@ -579,16 +634,20 @@ impl EmitIr for ast::Cond {
 
             gen.builder.position_at_end(then_block);
 
-            test.block.emit_ir(gen)?;
-            gen.builder.build_unconditional_branch(done_block).unwrap();
+            last_val = Some(test.block.emit_ir(gen)?);
+            if !last_val.as_ref().unwrap().is_never() {
+                gen.builder.build_unconditional_branch(done_block).unwrap();
+            }
             gen.builder.position_at_end(else_block);
         }
 
         if let Some(else_last) = self.else_last.as_ref() {
-            else_last.block.emit_ir(gen)?;
+            last_val = Some(else_last.block.emit_ir(gen)?);
         }
 
-        gen.builder.build_unconditional_branch(done_block).unwrap();
+        if !last_val.as_ref().unwrap().is_never() {
+            gen.builder.build_unconditional_branch(done_block).unwrap();
+        }
         gen.builder.position_at_end(done_block);
 
         Ok(())
@@ -637,7 +696,7 @@ impl EmitIr for ast::Init {
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Never => todo!(),
-                Value::None => todo!(),
+                Value::Void => todo!(),
             }
 
             // shadow the old var
@@ -672,7 +731,7 @@ impl EmitIr for ast::Set {
                 Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
                 Value::Never => todo!(),
-                Value::None => todo!(),
+                Value::Void => todo!(),
             }
 
             gen.namespace
@@ -738,7 +797,7 @@ impl EmitIr for ast::Expr {
                             TypeId::Bool => Ok(Value::Bool(val.into_int_value())),
                             TypeId::I32 => Ok(Value::I32(val.into_int_value())),
                             TypeId::Str => Ok(Value::Str(val.into_struct_value())),
-                            TypeId::Void => Ok(Value::None),
+                            TypeId::Void => Ok(Value::Void),
                             TypeId::Never => Ok(Value::Never),
                             TypeId::Unknown => unreachable!(),
                             TypeId::Other(_) => todo!(),
@@ -823,7 +882,7 @@ impl EmitIr for ast::Expr {
                     Value::I32(_) => todo!(),
                     Value::Str(_) => todo!(),
                     Value::Never => todo!(),
-                    Value::None => todo!(),
+                    Value::Void => todo!(),
                 };
 
                 let mut args = Vec::new();
@@ -834,7 +893,7 @@ impl EmitIr for ast::Expr {
                         Value::I32(v) => v.into(),
                         Value::Str(v) => v.into(),
                         Value::Never => todo!(),
-                        Value::None => todo!(),
+                        Value::Void => todo!(),
                     };
                     args.push(arg);
                 }
@@ -850,7 +909,7 @@ impl EmitIr for ast::Expr {
                     Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
                     Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
                     Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
-                    None => Ok(Value::None),
+                    None => Ok(Value::Void),
                 }
             }
         }
@@ -881,7 +940,7 @@ impl EmitIr for ConstValue {
         Ok(match self {
             ConstValue::I32(i) => Value::I32(gen.ctx.i32_type().const_int(*i as _, false)),
             ConstValue::Never => Value::Never,
-            ConstValue::None => Value::None,
+            ConstValue::None => Value::Void,
         })
     }
 }
