@@ -30,7 +30,7 @@ main := () -> i32 {
 };
 ```
 
-## Rust side
+## Usage from Rust
 
 ```rust
 let mut compiler = Compiler::new();
