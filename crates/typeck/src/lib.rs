@@ -586,7 +586,7 @@ impl TypeCheck for ast::Func {
     fn type_check(&mut self, ctx: &mut Context) {
         // TODO: run all Proto::type_check functions before running the block code
         // to allow recursion and ordering the global scope in any way
-        // self.proto.type_check(ctx);
+        self.proto.type_check(ctx);
 
         let type_id = self.proto.ty;
         assert_ne!(type_id, TypeId::Unknown);

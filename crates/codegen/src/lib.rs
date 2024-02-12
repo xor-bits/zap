@@ -21,7 +21,7 @@ use parser::{
     ast::{self, BinaryOp},
     TypeId,
 };
-use typeck::{Func, FuncId, TypeCheck};
+use typeck::{Func, FuncId, Type, TypeCheck};
 
 //
 
@@ -109,7 +109,7 @@ pub struct ModuleGen {
     statics: HashMap<Rc<str>, Value>,
     namespace: String,
     locals: Vec<(
-        HashMap<Rc<str>, PointerValue<'static>>,
+        HashMap<Rc<str>, Option<PointerValue<'static>>>,
         FunctionValue<'static>,
         BasicBlock<'static>,
     )>,
@@ -504,7 +504,7 @@ impl EmitIr for ast::Func {
                     .build_alloca(gen.ctx.i32_type(), &arg.id.value)
                     .unwrap();
                 gen.builder.build_store(addr, int).unwrap();
-                locals.insert(arg.id.value.as_str().into(), addr);
+                locals.insert(arg.id.value.as_str().into(), Some(addr));
             } else {
                 todo!()
             }
@@ -695,20 +695,23 @@ impl EmitIr for ast::Init {
             gen.namespace.push_str(var_name);
 
             let v = expr.emit_ir(gen)?;
-            let v_ty = expr.ty.as_llvm(gen).unwrap();
 
-            let (_, _, entry) = gen.locals.last().unwrap();
-            gen.alloca_builder.position_at_end(*entry);
+            let addr = expr.ty.as_llvm(gen).map(|v_ty| {
+                let (_, _, entry) = gen.locals.last().unwrap();
+                gen.alloca_builder.position_at_end(*entry);
 
-            let addr = gen.alloca_builder.build_alloca(v_ty, var_name).unwrap();
-            match v {
-                Value::Func(_) => todo!(),
-                Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::Never => todo!(),
-                Value::Void => todo!(),
-            }
+                let addr = gen.alloca_builder.build_alloca(v_ty, var_name).unwrap();
+                match v {
+                    Value::Func(_) => todo!(),
+                    Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::Never => todo!(),
+                    Value::Void => todo!(),
+                }
+
+                addr
+            });
 
             // shadow the old var
             _ = gen
@@ -735,14 +738,15 @@ impl EmitIr for ast::Set {
             gen.namespace.push_str("::");
             gen.namespace.push_str(var_name);
 
-            let addr = *gen.locals.last_mut().unwrap().0.get(var_name).unwrap();
-            match expr.emit_ir(gen)? {
-                Value::Func(_) => todo!(),
-                Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
-                Value::Never => todo!(),
-                Value::Void => todo!(),
+            if let Some(addr) = *gen.locals.last_mut().unwrap().0.get(var_name).unwrap() {
+                match expr.emit_ir(gen)? {
+                    Value::Func(_) => todo!(),
+                    Value::Bool(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::I32(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::Str(v) => _ = gen.builder.build_store(addr, v).unwrap(),
+                    Value::Never => todo!(),
+                    Value::Void => todo!(),
+                }
             }
 
             gen.namespace
@@ -801,13 +805,24 @@ impl EmitIr for ast::Expr {
             ast::AnyExpr::Load(var) => {
                 if let Some((locals, _, _)) = gen.locals.last() {
                     if let Some(addr) = locals.get(var.value.as_str()).cloned() {
-                        let pointee_ty = self.ty.as_llvm(gen).unwrap();
-                        let val = gen.builder.build_load(pointee_ty, addr, "tmp").unwrap();
+                        let val = addr.map(|addr| (self.ty.as_llvm(gen).unwrap(), addr)).map(
+                            |(pointee_ty, addr)| {
+                                gen.builder.build_load(pointee_ty, addr, "tmp").unwrap()
+                            },
+                        );
 
+                        // TODO: match gen.types.get_type(self.ty) {
+                        //     Type::Bool => Ok(Value::Bool(val.unwrap().into_int_value())),
+                        //     Type::I32 => Ok(Value::I32(val.unwrap().into_int_value())),
+                        //     Type::Str => Ok(Value::Str(val.unwrap().into_struct_value())),
+                        //     Type::Void => todo!(),
+                        //     Type::Never => todo!(),
+                        //     Type::Func(_) => todo!(),
+                        // }
                         return match self.ty {
-                            TypeId::Bool => Ok(Value::Bool(val.into_int_value())),
-                            TypeId::I32 => Ok(Value::I32(val.into_int_value())),
-                            TypeId::Str => Ok(Value::Str(val.into_struct_value())),
+                            TypeId::Bool => Ok(Value::Bool(val.unwrap().into_int_value())),
+                            TypeId::I32 => Ok(Value::I32(val.unwrap().into_int_value())),
+                            TypeId::Str => Ok(Value::Str(val.unwrap().into_struct_value())),
                             TypeId::Void => Ok(Value::Void),
                             TypeId::Never => Ok(Value::Never),
                             TypeId::Unknown => unreachable!(),
@@ -822,7 +837,12 @@ impl EmitIr for ast::Expr {
 
                 Err(Error::VariableNotFound(var.value.clone()))
             }
-            ast::AnyExpr::Func(_) => todo!(),
+            ast::AnyExpr::Func(f) => {
+                let func = f.proto.emit_ir(gen)?;
+                f.emit_ir(gen)?;
+
+                Ok(Value::Func(func))
+            }
             ast::AnyExpr::Binary { op, sides } => {
                 let (lhs, rhs) = sides.emit_ir(gen)?;
                 match (*op, lhs, rhs) {
