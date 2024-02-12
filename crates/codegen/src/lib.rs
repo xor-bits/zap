@@ -1,6 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    iter,
+    fmt, iter,
     rc::Rc,
 };
 
@@ -41,6 +41,17 @@ pub enum Error {
     InvalidMainFn,
     StaticRedefined(String),
     VariableNotFound(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::NoMainFn => write!(f, "no main function"),
+            Error::InvalidMainFn => write!(f, "invalid main function signature"),
+            Error::StaticRedefined(name) => write!(f, "static `{name}` already defined"),
+            Error::VariableNotFound(name) => write!(f, "variable `{name}` not found"),
+        }
+    }
 }
 
 //

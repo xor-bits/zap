@@ -1,65 +1,17 @@
-use std::{thread, time::Duration};
+use std::{
+    env::args,
+    error::Error,
+    fs::read_to_string,
+    io::{stdin, stdout, Write},
+    thread,
+    time::Duration,
+};
 
 use compiler::{Compiler, Str};
 
 //
 
-fn main() {
-    let str = r#"  
-        // recurse := fn(a: i32) {
-        //     printi(a);
-        //     wait();
-        //     recurse(a + 1);
-        // };
-
-        // fib := fn() {
-        //     a := 0;
-        //     b := 1;
-        //     for {
-        //         printi(a);
-        //         wait();
-
-        //         tmp := a + b;
-        //         a = b;
-        //         b = tmp;
-        //     };
-        // };
-
-        fizzbuzz := fn() {
-            i := 1;
-            for {
-                f := i % 3 == 0;
-                b := i % 5 == 0;
-                if f && b {
-                    prints("fizzbuzz");
-                } else if f {
-                    prints("fizz");
-                } else if b {
-                    prints("buzz");
-                } else {
-                    printi(i);
-                };
-                wait();
-                i = i + 1;
-            };
-        };
-    
-        main := fn() -> i32 {
-            // fib();
-            // recurse(1);
-            fizzbuzz();
-            0
-            // a := 1;
-            // for {
-            //     printi(a);
-            //     a = a + 1;
-            //     prints("waiting ..");
-            //     wait();
-            // };
-            // sum(32, 32)
-        }
-    "#;
-
+fn main() -> Result<(), Box<dyn Error>> {
     let mut compiler = Compiler::new();
 
     compiler.add("sum", |a: i32, b: i32| a + b).unwrap();
@@ -70,6 +22,35 @@ fn main() {
         .add("wait", || thread::sleep(Duration::from_millis(200)))
         .unwrap();
 
-    let res = compiler.run(str).unwrap();
-    println!("main returned: `{res}`");
+    let res = if let Some(path_arg) = args().nth(1) {
+        let src = read_to_string(path_arg)?;
+        compiler.run(src.as_str())?
+    } else {
+        let stdin = stdin();
+        let mut buf = String::new();
+        loop {
+            print!(">>> ");
+            stdout().flush()?;
+
+            buf.clear();
+            let line_len = stdin.read_line(&mut buf)?;
+            if line_len == 0 {
+                break;
+            }
+            let line = &buf[..line_len];
+
+            if let Err(e) = compiler.run(line) {
+                eprintln!("{e}");
+            }
+
+            println!();
+        }
+        0
+    };
+
+    if res != 0 {
+        println!("main returned: `{res}`");
+    }
+
+    Ok(())
 }

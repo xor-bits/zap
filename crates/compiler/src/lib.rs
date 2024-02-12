@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Mutex;
 
 use codegen::{CodeGen, FnAsLlvm, ModuleGen};
@@ -19,6 +20,25 @@ pub type Result<T, E = RunError> = std::result::Result<T, E>;
 pub enum RunError {
     Parse(parser::Error),
     Run(codegen::Error),
+}
+
+impl fmt::Display for RunError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RunError::Parse(err) => write!(f, "{err}"),
+            RunError::Run(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for RunError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
 }
 
 impl From<parser::Error> for RunError {
