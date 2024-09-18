@@ -640,6 +640,6 @@ mod tests {
 
     #[test]
     fn lex_example() {
-        assert_yaml_snapshot!(lex(include_str!("../../../tests/trivial")));
+        assert_yaml_snapshot!(lex(include_str!("../../compiler/tests/trivial")));
     }
 }

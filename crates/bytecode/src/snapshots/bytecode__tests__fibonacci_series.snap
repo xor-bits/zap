@@ -1,0 +1,20 @@
+---
+source: crates/bytecode/src/lib.rs
+expression: results
+---
+- I32: 0
+- I32: 1
+- I32: 1
+- I32: 2
+- I32: 3
+- I32: 5
+- I32: 8
+- I32: 13
+- I32: 21
+- I32: 34
+- I32: 55
+- I32: 89
+- I32: 144
+- I32: 233
+- I32: 377
+- I32: 610

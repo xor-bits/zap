@@ -20,8 +20,8 @@
         devShells.default = pkgs.mkShell rec {
           buildInputs = with pkgs; [
             pkg-config
-            # rust-bin.nightly.latest.default
-            rustup
+            rust-bin.nightly.latest.default
+            # rustup
             cargo-udeps
             cargo-nextest
             cargo-watch

@@ -8,19 +8,25 @@ use std::{
 };
 
 use compiler::{Compiler, Str};
+// use interpreter::Interpreter;
+use bytecode::Runtime;
 
 //
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut compiler = Compiler::new();
+    // let mut compiler = Interpreter::new();
+    // let mut compiler = Compiler::new();
+    let mut compiler = Runtime::new();
 
-    compiler.add("sum", |a: i32, b: i32| a + b).unwrap();
-    compiler.add("printb", |a: bool| println!("{a}")).unwrap();
-    compiler.add("printi", |a: i32| println!("{a}")).unwrap();
-    compiler.add("prints", |a: Str| println!("{a}")).unwrap();
-    compiler
-        .add("wait", || thread::sleep(Duration::from_millis(200)))
-        .unwrap();
+    compiler.run("x := 4");
+
+    // compiler.add("sum", |a: i32, b: i32| a + b).unwrap();
+    // compiler.add("printb", |a: bool| println!("{a}")).unwrap();
+    // compiler.add("printi", |a: i32| println!("{a}")).unwrap();
+    // compiler.add("prints", |a: Str| println!("{a}")).unwrap();
+    // compiler
+    //     .add("wait", || thread::sleep(Duration::from_millis(200)))
+    //     .unwrap();
 
     let res = if let Some(path_arg) = args().nth(1) {
         let src = read_to_string(path_arg)?;
@@ -45,12 +51,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             println!();
         }
-        0
     };
 
-    if res != 0 {
-        println!("main returned: `{res}`");
-    }
+    // if res != 0 {
+    //     println!("main returned: `{res:?}`");
+    // }
 
     Ok(())
 }

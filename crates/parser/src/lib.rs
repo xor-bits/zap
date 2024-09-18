@@ -19,6 +19,16 @@ pub enum Error {
     UnexpectedToken(String),
 }
 
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -47,6 +57,20 @@ impl AsTypeId for () {
 }
 
 //
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(u8)]
+pub enum Value {
+    Bool(bool),
+    I32(i32),
+    Str(&'static str),
+    Void,
+    Never,
+    #[default]
+    Unknown,
+    Other,
+}
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy, Default)]

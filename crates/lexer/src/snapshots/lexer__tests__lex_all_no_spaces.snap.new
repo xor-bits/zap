@@ -1,0 +1,115 @@
+---
+source: crates/lexer/src/lib.rs
+assertion_line: 633
+expression: lex(&all_tokens)
+---
+- ";=(){}+-*/%:,@&<><=>===!=&&||:=->fnifelseforreturnstructtest"
+- Ok:
+    - token: Semi
+      span:
+        range: 0..1
+        str: ;
+    - token: Assign
+      span:
+        range: 1..2
+        str: "="
+    - token: LParen
+      span:
+        range: 2..3
+        str: (
+    - token: RParen
+      span:
+        range: 3..4
+        str: )
+    - token: LBrace
+      span:
+        range: 4..5
+        str: "{"
+    - token: RBrace
+      span:
+        range: 5..6
+        str: "}"
+    - token: Plus
+      span:
+        range: 6..7
+        str: +
+    - token: Minus
+      span:
+        range: 7..8
+        str: "-"
+    - token: Asterisk
+      span:
+        range: 8..9
+        str: "*"
+    - token: Slash
+      span:
+        range: 9..10
+        str: /
+    - token: Percent
+      span:
+        range: 10..11
+        str: "%"
+    - token: Colon
+      span:
+        range: 11..12
+        str: ":"
+    - token: Comma
+      span:
+        range: 12..13
+        str: ","
+    - token: At
+      span:
+        range: 13..14
+        str: "@"
+    - token: Ampersand
+      span:
+        range: 14..15
+        str: "&"
+    - token: Lt
+      span:
+        range: 15..16
+        str: "<"
+    - token: Gt
+      span:
+        range: 16..17
+        str: ">"
+    - token: Le
+      span:
+        range: 17..19
+        str: "<="
+    - token: Ge
+      span:
+        range: 19..21
+        str: ">="
+    - token: Eq
+      span:
+        range: 21..23
+        str: "=="
+    - token: Neq
+      span:
+        range: 23..25
+        str: "!="
+    - token: And
+      span:
+        range: 25..27
+        str: "&&"
+    - token: Or
+      span:
+        range: 27..29
+        str: "||"
+    - token: Walrus
+      span:
+        range: 29..31
+        str: ":="
+    - token: RArrow
+      span:
+        range: 31..33
+        str: "->"
+    - token: Ident
+      span:
+        range: 33..60
+        str: fnifelseforreturnstructtest
+    - token: Eoi
+      span:
+        range: 60..60
+        str: ""

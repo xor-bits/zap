@@ -158,3 +158,9 @@ impl Compiler {
         Ok(res)
     }
 }
+
+impl Default for Compiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}

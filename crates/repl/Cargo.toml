@@ -7,3 +7,5 @@ edition.workspace = true
 
 [dependencies]
 compiler.path = "../compiler"
+# interpreter.path = "../interpreter"
+bytecode.path = "../bytecode"

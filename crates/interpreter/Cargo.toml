@@ -1,0 +1,9 @@
+[package]
+name = "interpreter"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+once_cell = "1.19"
+parser.path = "../parser"
+lexer.path = "../lexer"

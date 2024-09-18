@@ -1,0 +1,139 @@
+---
+source: crates/lexer/src/lib.rs
+assertion_line: 620
+expression: lex(&all_tokens)
+---
+- "; = ( ) { } + - * / % : , @ & < > <= >= == != && || := -> fn if else for return struct test "
+- Ok:
+    - token: Semi
+      span:
+        range: 0..1
+        str: ;
+    - token: Assign
+      span:
+        range: 2..3
+        str: "="
+    - token: LParen
+      span:
+        range: 4..5
+        str: (
+    - token: RParen
+      span:
+        range: 6..7
+        str: )
+    - token: LBrace
+      span:
+        range: 8..9
+        str: "{"
+    - token: RBrace
+      span:
+        range: 10..11
+        str: "}"
+    - token: Plus
+      span:
+        range: 12..13
+        str: +
+    - token: Minus
+      span:
+        range: 14..15
+        str: "-"
+    - token: Asterisk
+      span:
+        range: 16..17
+        str: "*"
+    - token: Slash
+      span:
+        range: 18..19
+        str: /
+    - token: Percent
+      span:
+        range: 20..21
+        str: "%"
+    - token: Colon
+      span:
+        range: 22..23
+        str: ":"
+    - token: Comma
+      span:
+        range: 24..25
+        str: ","
+    - token: At
+      span:
+        range: 26..27
+        str: "@"
+    - token: Ampersand
+      span:
+        range: 28..29
+        str: "&"
+    - token: Lt
+      span:
+        range: 30..31
+        str: "<"
+    - token: Gt
+      span:
+        range: 32..33
+        str: ">"
+    - token: Le
+      span:
+        range: 34..36
+        str: "<="
+    - token: Ge
+      span:
+        range: 37..39
+        str: ">="
+    - token: Eq
+      span:
+        range: 40..42
+        str: "=="
+    - token: Neq
+      span:
+        range: 43..45
+        str: "!="
+    - token: And
+      span:
+        range: 46..48
+        str: "&&"
+    - token: Or
+      span:
+        range: 49..51
+        str: "||"
+    - token: Walrus
+      span:
+        range: 52..54
+        str: ":="
+    - token: RArrow
+      span:
+        range: 55..57
+        str: "->"
+    - token: Fn
+      span:
+        range: 58..60
+        str: fn
+    - token: If
+      span:
+        range: 61..63
+        str: if
+    - token: Else
+      span:
+        range: 64..68
+        str: else
+    - token: For
+      span:
+        range: 69..72
+        str: for
+    - token: Return
+      span:
+        range: 73..79
+        str: return
+    - token: Struct
+      span:
+        range: 80..86
+        str: struct
+    - token: Test
+      span:
+        range: 87..91
+        str: test
+    - token: Eoi
+      span:
+        range: 91..91
+        str: ""
