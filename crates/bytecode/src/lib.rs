@@ -2,8 +2,6 @@
 
 //
 
-use std::{thread, time::Duration};
-
 use lexer::Lexer;
 use parser::{
     ast::{Ast, Root},
@@ -13,11 +11,16 @@ use parser::{
 #[cfg(test)]
 use serde::Serialize;
 
+use self::compiler::{Bytecode, Compile};
+
+//
+
+mod compiler;
+
 //
 
 pub struct Runtime {
-    code: Vec<u8>,
-    strings: Vec<u8>,
+    bytecode: Bytecode,
 
     fuel: usize,
     fuel_enabled: bool,
@@ -25,13 +28,13 @@ pub struct Runtime {
     ip: usize,
     stack: Vec<u8>,
     regs: Vec<Value>,
+    call_stack: Vec<usize>,
 }
 
 impl Runtime {
     pub const fn new() -> Self {
         Self {
-            code: Vec::new(),
-            strings: Vec::new(),
+            bytecode: Bytecode::new(),
 
             fuel: 0,
             fuel_enabled: false,
@@ -39,6 +42,7 @@ impl Runtime {
             ip: 0,
             stack: Vec::new(),
             regs: Vec::new(),
+            call_stack: Vec::new(),
         }
     }
 
@@ -58,61 +62,14 @@ impl Runtime {
         self.fuel_enabled
     }
 
-    pub fn assemble(&mut self, instr: &[Instruction]) -> Result<()> {
-        if self.code.is_empty() {
-            self.code.extend_from_slice(&[0xDE, 0xAF, 0xC0, 0xDE]);
-        }
-
-        self.strings.extend_from_slice(&[0, 1]);
-        self.strings.extend_from_slice(&[1, 13]);
-        self.strings.extend_from_slice(b" ");
-        self.strings.extend_from_slice(b"Hello, world!");
-
-        for ins in instr {
-            ins.as_bytes(&mut self.code);
-        }
-
-        Ok(())
-    }
-
     pub fn run(&mut self, code: &str) -> Result<()> {
         let mut parser = ParseStream::from_lexer(Lexer::new(code));
         let ast: Ast<Root> = parser.parse()?;
 
-        if self.code.is_empty() {
-            self.code.extend_from_slice(&[0xDE, 0xAF, 0xC0, 0xDE]);
-        }
+        self.bytecode.init();
 
-        self.strings.extend_from_slice(&[0, 1]);
-        self.strings.extend_from_slice(&[1, 13]);
-        self.strings.extend_from_slice(b" ");
-        self.strings.extend_from_slice(b"Hello, world!");
-
-        for ins in [
-            // set X = 0 and Y = 1
-            Instruction::I32Const { val: 0 },
-            Instruction::I32Pop { reg: 0 },
-            Instruction::I32Const { val: 1 },
-            Instruction::I32Pop { reg: 1 },
-            // print X
-            Instruction::I32Push { reg: 0 },
-            Instruction::I32Print,
-            // tmp = X + Y
-            Instruction::I32Push { reg: 0 },
-            Instruction::I32Push { reg: 1 },
-            Instruction::I32Add,
-            // X = Y and Y = tmp
-            Instruction::I32Push { reg: 1 },
-            Instruction::I32Pop { reg: 0 },
-            Instruction::I32Pop { reg: 1 },
-            // loop
-            Instruction::Step,
-            Instruction::GotoRelI8 { offs: -15 },
-        ] {
-            ins.as_bytes(&mut self.code);
-        }
-
-        println!("{:?}", self.code);
+        ast.compile(&mut self.bytecode).unwrap();
+        self.bytecode.dump();
 
         self.exec();
 
@@ -134,7 +91,7 @@ impl Runtime {
     }
 
     pub fn exec(&mut self) {
-        let [0xDE, 0xAF, 0xC0, 0xDE, code @ ..] = self.code.as_slice() else {
+        let [0xDE, 0xAF, 0xC0, 0xDE, code @ ..] = self.bytecode.code() else {
             panic!("invalid bytecode");
         };
 
@@ -146,24 +103,44 @@ impl Runtime {
                 self.fuel -= 1;
             }
 
+            println!("ip = {}", self.ip);
             if self.ip >= code.len() {
                 panic!("ip out of bounds");
             }
 
-            // println!("ip = {ip} opcode = {}", code[ip]);
+            println!("opcode = {}", code[self.ip]);
             let ins = Instruction::from_bytes(&code[self.ip..]).expect("invalid opcode");
-            // println!("instr = {ins:?}");
+            println!("instr = {ins:?}");
 
             match ins {
+                Instruction::Entry { addr } => {
+                    self.call_stack.push(self.ip + ins.size());
+                    self.ip = addr as usize;
+                    continue;
+                }
                 Instruction::I32Const { val: small_const } => self
                     .stack
                     .extend_from_slice(&(small_const as i32).to_ne_bytes()[..]),
-                Instruction::I32Load8 { reg } => {}
+                Instruction::I32Load8 { idx } => {
+                    let val = self
+                        .bytecode
+                        .const_pool()
+                        .get_i32(idx as usize)
+                        .expect("invalid constant");
+                    Self::push_bytes(&mut self.stack, val.to_ne_bytes())
+                }
                 Instruction::I32Push { reg } => {
-                    let Value::I32(val) =
-                        *self.regs.get(reg as usize).expect("register out of bounds")
-                    else {
-                        panic!("invalid register cast");
+                    let val = if let Some(reg) = self.regs.get(reg as usize) {
+                        *reg
+                    } else {
+                        self.regs.resize_with(reg as usize, || Value::Unknown);
+                        Value::Unknown
+                    };
+
+                    let val = match val {
+                        Value::I32(val) => val,
+                        Value::Unknown => 0,
+                        // _ => panic!("invalid register cast"),
                     };
 
                     Self::push_bytes(&mut self.stack, val.to_ne_bytes());
@@ -195,12 +172,36 @@ impl Runtime {
                     Self::push_bytes(&mut self.stack, val);
                     Self::push_bytes(&mut self.stack, val);
                 }
+                Instruction::I32GotoAbs => {
+                    let val = i32::from_ne_bytes(Self::pop_bytes(&mut self.stack));
+                    self.ip = val as usize;
+                }
+                Instruction::I32CallAbs => {
+                    self.call_stack.push(self.ip + ins.size());
+                    let val = i32::from_ne_bytes(Self::pop_bytes(&mut self.stack));
+                    self.ip = val as usize;
+                }
                 Instruction::GotoRelI8 { offs } => {
                     self.ip = self
                         .ip
                         .checked_add_signed(offs as isize)
                         .expect("ip out of bounds");
                     continue;
+                }
+                Instruction::CallRelI8 { offs } => {
+                    self.call_stack.push(self.ip + ins.size());
+                    self.ip = self
+                        .ip
+                        .checked_add_signed(offs as isize)
+                        .expect("ip out of bounds");
+                    continue;
+                }
+                Instruction::Return => {
+                    self.ip = self.call_stack.pop().expect("call stack underflow");
+                    continue;
+                }
+                Instruction::Exit => {
+                    return;
                 }
                 Instruction::Debug => {
                     println!("ip={:#x} {:?} {:?}", self.ip, self.stack, self.regs);
@@ -335,6 +336,11 @@ impl_instructions! {
 #[derive(Debug, Clone, Copy)]
 // #[repr(u8)]
 pub enum Instruction {
+    /// call the entry point, the first instruction must be this
+    Entry {
+        addr: u64,
+    },
+
     /// push a constant to stack
     I32Const {
         val: i8,
@@ -342,7 +348,7 @@ pub enum Instruction {
 
     /// push a constant to stack from the i32 const pool
     I32Load8 {
-        reg: u8,
+        idx: u8,
     },
 
     /// push a local to stack
@@ -364,10 +370,33 @@ pub enum Instruction {
     /// duplicate the top of stack (i32)
     I32Dup,
 
+    // /// pop a i32 and goto `i32 + ip`
+    // I32GotoRel,
+
+    // /// push the ip to the call stack, pop i32 and goto `i32 + ip`
+    // I32CallRel,
+
+    /// pop a i32 and `ip = i32`
+    I32GotoAbs,
+
+    /// push the ip to the call stack, pop i32 and `ip = i32`
+    I32CallAbs,
+
     /// goto relative address
     GotoRelI8 {
         offs: i8,
     },
+
+    /// push the ip to the call stack and goto relative address
+    CallRelI8 {
+        offs: i8,
+    },
+
+    /// pop a return address from the call stack and jump there
+    Return,
+
+    /// exit
+    Exit,
 
     /// debug the program
     Debug,

@@ -7,6 +7,6 @@ edition.workspace = true
 
 [dependencies]
 parser.path = "../parser"
-typeck.path = "../typeck"
+# typeck.path = "../typeck"
 
 inkwell = { version = "0.3", features = ["llvm17-0"] }

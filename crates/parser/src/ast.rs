@@ -112,7 +112,8 @@ impl Parse for Root {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootItem {
-    Init(RootInit),
+    // Init(RootInit),
+    Init(Init),
     Test(Test),
 }
 

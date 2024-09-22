@@ -7,7 +7,6 @@ use inkwell::{
     AddressSpace,
 };
 use parser::{AsTypeId, TypeId};
-use typeck::Type;
 
 use crate::{context, ModuleGen};
 

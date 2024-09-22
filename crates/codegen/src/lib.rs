@@ -21,7 +21,6 @@ use parser::{
     ast::{self, BinaryOp},
     TypeId,
 };
-use typeck::{Func, FuncId, Type, TypeCheck};
 
 //
 
