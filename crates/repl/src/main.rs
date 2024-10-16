@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-// use compiler::{Compiler, Str};
+use compiler::Compiler;
 // use interpreter::Interpreter;
 use bytecode::Runtime;
 use lexer::Lexer;
@@ -21,17 +21,13 @@ use typeck::Type;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // let mut compiler = Interpreter::new();
-    // let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new();
     // let mut compiler = Runtime::new();
 
-    let mut parser = ParseStream::from_lexer(Lexer::new("main:=fn(){x:=4;printi(x);}"));
-    let ast: Ast<Root> = parser.parse()?;
+    // compiler.add_extern("printi", Type::Void, &[Type::Str]);
+    compiler.add("printi", |i: i32| println!("{i}")).unwrap();
+    compiler.run("main:=fn(){x:=4;printi(x);}").unwrap();
 
-    let mut module = typeck::Module::new();
-    module.add_extern("printi", Type::Void, &[Type::I32]);
-    module.process(&ast).unwrap();
-
-    module.dump();
     // println!("{module:#?}");
 
     Ok(())

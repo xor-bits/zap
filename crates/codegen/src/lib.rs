@@ -1,4 +1,614 @@
 use std::{
+    borrow::BorrowMut,
+    collections::HashMap,
+    fmt, iter,
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
+
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    execution_engine::ExecutionEngine,
+    module::Module,
+    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    values::{
+        AnyValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
+    },
+    AddressSpace, OptimizationLevel,
+};
+use parser::ast::{Ast, BinaryOp, Root};
+use typeck::{FuncId, Function, Literal, Statement, TmpId, Type, VarId};
+
+use self::types::AsLlvm;
+pub use self::types::{AsType, FnAsLlvm};
+
+//
+
+mod types;
+
+//
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    NoMainFn,
+    InvalidMainFn,
+    StaticRedefined(String),
+    VariableNotFound(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::NoMainFn => write!(f, "no main function"),
+            Error::InvalidMainFn => write!(f, "invalid main function signature"),
+            Error::StaticRedefined(name) => write!(f, "static `{name}` already defined"),
+            Error::VariableNotFound(name) => write!(f, "variable `{name}` not found"),
+        }
+    }
+}
+
+//
+
+fn context() -> &'static Context {
+    thread_local! {
+        static CTX: &'static Context = Box::leak(Box::new(Context::create()));
+    }
+
+    CTX.with(|c| *c)
+}
+
+fn to_llvm_fn_type<'a>(
+    ctx: &'a Context,
+    ty: &Type,
+    param_types: &[BasicMetadataTypeEnum<'a>],
+) -> FunctionType<'a> {
+    match ty {
+        Type::Func(_) => todo!(),
+        Type::Bool => ctx.bool_type().fn_type(param_types, false),
+        Type::I32 => ctx.i32_type().fn_type(param_types, false),
+        Type::Str => todo!(),
+        Type::Never => todo!(),
+        Type::Void => ctx.void_type().fn_type(param_types, false),
+        Type::Unknown => todo!(),
+    }
+}
+
+fn to_llvm_metadata_type<'a>(ctx: &'a Context, ty: &Type) -> BasicMetadataTypeEnum<'a> {
+    match ty {
+        Type::Func(_) => todo!(),
+        Type::Bool => ctx.bool_type().into(),
+        Type::I32 => ctx.bool_type().into(),
+        Type::Str => todo!(),
+        Type::Never => todo!(),
+        Type::Void => todo!(),
+        Type::Unknown => todo!(),
+    }
+}
+
+fn to_llvm_basic_type<'a>(ctx: &'a Context, ty: &Type) -> BasicTypeEnum<'a> {
+    match ty {
+        Type::Func(_) => ctx.struct_type(&[], false).into(),
+        Type::Bool => ctx.bool_type().into(),
+        Type::I32 => ctx.i32_type().into(),
+        Type::Str => todo!(),
+        Type::Never => todo!(),
+        Type::Void => todo!(),
+        Type::Unknown => todo!(),
+    }
+}
+
+fn to_prototype<'a>(ctx: &'a Context, code: &typeck::Module, func: &Function) -> FunctionType<'a> {
+    let param_types: Box<[_]> = func
+        .params
+        .iter()
+        .map(|ty| to_llvm_metadata_type(ctx, code.get_type(*ty)))
+        .collect();
+    to_llvm_fn_type(ctx, code.get_type(func.returns), &param_types)
+}
+
+fn to_const<'a>(ctx: &'a Context, lit: &Literal) -> BasicValueEnum<'a> {
+    match lit {
+        typeck::Literal::Bool(v) => ctx
+            .bool_type()
+            .const_int(if *v { 1 } else { 0 }, false)
+            .into(),
+        typeck::Literal::I32(i) => ctx.i32_type().const_int(*i as u64, false).into(),
+        typeck::Literal::Str(_) => todo!(),
+    }
+}
+
+//
+
+pub trait IndexOf {
+    fn index(self) -> usize;
+}
+
+impl IndexOf for VarId {
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl IndexOf for TmpId {
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl IndexOf for FuncId {
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+//
+
+pub struct IdMap<K, V> {
+    vals: Vec<Option<V>>,
+    _p: PhantomData<K>,
+}
+
+impl<K, V: Copy> IdMap<K, V> {
+    pub const fn new() -> Self {
+        Self {
+            vals: Vec::new(),
+            _p: PhantomData,
+        }
+    }
+
+    fn reserve(&mut self, new_len: usize) {
+        if self.vals.len() < new_len {
+            self.vals.resize(new_len, None);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.vals.clear();
+    }
+}
+
+impl<K, V: Copy> Default for IdMap<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K: IndexOf, V> IdMap<K, V> {
+    #[track_caller]
+    fn get(&self, k: K) -> &V {
+        self.vals[k.index()].as_ref().unwrap()
+    }
+
+    #[track_caller]
+    fn set(&mut self, k: K, v: V) {
+        self.vals[k.index()] = Some(v);
+    }
+}
+
+//
+
+pub struct CodeGen {
+    ctx: Option<&'static Context>,
+}
+
+impl CodeGen {
+    pub const fn new() -> Self {
+        Self { ctx: None }
+    }
+
+    pub fn module(&mut self) -> ModuleGen {
+        let ctx = *self.ctx.get_or_insert_with(context);
+
+        let module = ctx.create_module("<run>");
+        let builder = ctx.create_builder();
+        let alloca_builder = ctx.create_builder();
+
+        let engine = module
+            .create_jit_execution_engine(OptimizationLevel::Aggressive)
+            .unwrap();
+
+        ModuleGen {
+            ctx,
+            module,
+            builder,
+            alloca_builder,
+
+            engine,
+
+            types: typeck::Module::new(),
+            functions: IdMap::new(),
+        }
+    }
+}
+
+impl Default for CodeGen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+//
+
+pub struct ModuleGen {
+    ctx: &'static Context,
+    module: Module<'static>,
+    builder: Builder<'static>,
+    alloca_builder: Builder<'static>,
+
+    engine: ExecutionEngine<'static>,
+
+    types: typeck::Module,
+    functions: IdMap<FuncId, FunctionValue<'static>>,
+}
+
+impl ModuleGen {
+    pub fn add(&mut self, ast: &Ast<Root>) -> FuncId {
+        // let main = code.get_function(main);
+
+        let main = self.types.process(ast).unwrap();
+        self.types.dump();
+
+        // self.functions.clear();
+        self.functions.reserve(self.types.functions().len());
+
+        // generate all function prototypes
+
+        for (i, func) in self.types.functions().iter().enumerate() {
+            if func.is_extern {
+                continue;
+            }
+
+            let proto = to_prototype(self.ctx, &self.types, func);
+            let func = self
+                .module
+                .add_function("fixme-keep-function-name", proto, None);
+
+            self.functions.set(FuncId(i), func);
+        }
+
+        // compile all functions
+
+        #[derive(Clone, Copy)]
+        enum FuncOr<T> {
+            T(T),
+            FunctionValue(FunctionValue<'static>),
+        }
+
+        impl<T> FuncOr<T> {
+            fn as_t(&self) -> Option<&T> {
+                if let Self::T(v) = self {
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+
+            fn as_function_value(&self) -> Option<&FunctionValue<'static>> {
+                if let Self::FunctionValue(v) = self {
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+        }
+
+        let mut tmp_map: IdMap<TmpId, FuncOr<BasicValueEnum>> = IdMap::new();
+        let mut var_map: IdMap<VarId, FuncOr<PointerValue>> = IdMap::new();
+
+        for (i, func) in self.types.functions().iter().enumerate() {
+            if func.is_extern {
+                continue;
+            }
+
+            let func_val = *self.functions.get(FuncId(i));
+
+            let entry = self.ctx.append_basic_block(func_val, "entry");
+            self.alloca_builder.position_at_end(entry);
+
+            let post_alloca = self.ctx.append_basic_block(func_val, "post-alloca");
+            self.builder.position_at_end(post_alloca);
+
+            tmp_map.clear();
+            var_map.clear();
+            tmp_map.reserve(func.temporaries.len());
+            var_map.reserve(func.variables.len());
+
+            for stmt in func.stmts.iter() {
+                match stmt {
+                    Statement::Let { dst, src } => match *tmp_map.get(*src) {
+                        FuncOr::T(val) => {
+                            let ty = val.get_type();
+                            let ptr = self
+                                .alloca_builder
+                                .build_alloca(ty, "fixme-keep-variable-name")
+                                .unwrap();
+
+                            var_map.set(*dst, FuncOr::T(ptr));
+                            self.builder.build_store(ptr, val).unwrap();
+                        }
+                        FuncOr::FunctionValue(val) => {
+                            var_map.set(*dst, FuncOr::FunctionValue(val));
+                        }
+                    },
+                    Statement::Store { dst, src } => {
+                        let ptr = *var_map
+                            .get(*dst)
+                            .as_t()
+                            .expect("cannot mutate a function value");
+                        let val = *tmp_map
+                            .get(*src)
+                            .as_t()
+                            .expect("cannot mutate a function value");
+                        self.builder.build_store(ptr, val).unwrap();
+                    }
+                    Statement::Load { dst, src } => match var_map.get(*src) {
+                        FuncOr::T(ptr) => {
+                            let val = self
+                                .builder
+                                .build_load(
+                                    to_llvm_basic_type(
+                                        self.ctx,
+                                        self.types.get_type(func.var(*src)),
+                                    ),
+                                    *ptr,
+                                    "fixme-keep-variable-name",
+                                )
+                                .unwrap();
+
+                            tmp_map.set(*dst, FuncOr::T(val));
+                        }
+                        FuncOr::FunctionValue(f) => {
+                            tmp_map.set(*dst, FuncOr::FunctionValue(*f));
+                        }
+                    },
+                    Statement::Extern { dst, src, name } => {
+                        let func = *self.functions.get(*src);
+                        tmp_map.set(*dst, FuncOr::FunctionValue(func));
+                    }
+                    Statement::Func { dst, src } => {
+                        let func = *self.functions.get(*src);
+                        tmp_map.set(*dst, FuncOr::FunctionValue(func));
+                    }
+                    Statement::Const { dst, src } => {
+                        tmp_map.set(*dst, FuncOr::T(to_const(self.ctx, src)));
+                    }
+                    Statement::BinExpr { dst, lhs, op, rhs } => {
+                        let lhs = *tmp_map
+                            .get(*lhs)
+                            .as_t()
+                            .expect("cannot operate on a function value");
+                        let rhs = *tmp_map
+                            .get(*rhs)
+                            .as_t()
+                            .expect("cannot operate on a function value");
+                        let ty = self.types.get_type(func.tmp(*dst));
+
+                        match (ty, op) {
+                            (Type::I32, BinaryOp::Add) => {
+                                self.builder
+                                    .build_int_add(
+                                        lhs.into_int_value(),
+                                        rhs.into_int_value(),
+                                        "builtin-i32-add",
+                                    )
+                                    .unwrap();
+                            }
+                            (Type::I32, BinaryOp::Mul) => {
+                                self.builder
+                                    .build_int_mul(
+                                        lhs.into_int_value(),
+                                        rhs.into_int_value(),
+                                        "builtin-i32-mul",
+                                    )
+                                    .unwrap();
+                            }
+                            _ => {
+                                todo!("invalid operation: {ty:?} {}", op.as_str());
+                            }
+                        }
+                    }
+                    Statement::Call { dst, func, args } => {
+                        let tmp = tmp_map
+                            .get(*func)
+                            .as_function_value()
+                            .expect("cannot call a non function");
+
+                        let args: Box<[_]> = args
+                            .iter()
+                            .map(|arg| {
+                                tmp_map
+                                    .get(*arg)
+                                    .as_t()
+                                    .expect("cannot use functions as arguments")
+                                    .as_basic_value_enum()
+                                    .into()
+                            })
+                            .collect();
+
+                        let val = self
+                            .builder
+                            .build_direct_call(*tmp, &args, "fixme-keep-function-names")
+                            .unwrap();
+
+                        let val = match val.try_as_basic_value().left() {
+                            Some(val) => val,
+                            None => context().struct_type(&[], false).const_zero().into(),
+                        };
+
+                        tmp_map.set(*dst, FuncOr::T(val));
+                    }
+                    Statement::Return { src } => todo!(),
+                }
+            }
+
+            self.alloca_builder
+                .build_unconditional_branch(post_alloca)
+                .unwrap();
+            self.builder.build_return(None).unwrap();
+
+            if !func_val.verify(true) {
+                eprintln!("LLVM IR:\n");
+                self.module.print_to_stderr();
+                panic!("invalid fn");
+            }
+        }
+
+        main
+    }
+
+    pub fn add_extern<F: FnAsLlvm>(&mut self, name: &str, f: F) -> Result<()> {
+        let ret = f.return_type();
+        let params = f.params();
+
+        let param_types: Vec<_> = params.iter().filter_map(|a| a.as_llvm_meta(self)).collect();
+        let wrapper_ty = ret.as_llvm_fn(self, &param_types, false);
+        let wrapper_ptr = self.module.add_function(name, wrapper_ty, None);
+
+        let func_id = self.types.add_extern(name, ret, params);
+        self.functions.set(func_id, wrapper_ptr);
+
+        let entry = self.ctx.append_basic_block(wrapper_ptr, "entry");
+        self.builder.position_at_end(entry);
+
+        let ty_usize = self
+            .ctx
+            .ptr_sized_int_type(self.engine.get_target_data(), None);
+        let ty_ptr = ty_usize.ptr_type(AddressSpace::default());
+        let fn_ptr = self
+            .builder
+            .build_int_to_ptr(
+                ty_usize.const_int(f.as_extern_c_fn_ptr() as _, false),
+                ty_ptr,
+                "wrapped-fn-ptr",
+            )
+            .unwrap();
+
+        let args: Vec<BasicMetadataValueEnum> = wrapper_ptr
+            .get_param_iter()
+            .map(|p| p.as_any_value_enum().try_into().unwrap())
+            .collect();
+
+        let val = self
+            .builder
+            .build_indirect_call(wrapper_ty, fn_ptr, &args, "call-fn-ptr")
+            .unwrap();
+
+        match val.try_as_basic_value().left() {
+            Some(BasicValueEnum::ArrayValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::IntValue(v)) => {
+                self.builder.build_return(Some(&v)).unwrap();
+            }
+            Some(BasicValueEnum::FloatValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
+            None => {
+                self.builder.build_return(None).unwrap();
+            }
+        };
+
+        if !wrapper_ptr.verify(true) {
+            eprintln!("LLVM IR:\n");
+            self.module.print_to_stderr();
+            panic!("invalid fn");
+        }
+
+        Ok(())
+    }
+
+    /// # Safety
+    /// the fn_ptr should be `extern "C"` signature should match `ret` and `args`
+    pub unsafe fn add_extern_userdata(
+        &mut self,
+        name: &str,
+        fn_ptr: usize,
+        userdata: usize,
+        ret: Type,
+        params: &[Type],
+    ) -> Result<()> {
+        let ty_usize = self
+            .ctx
+            .ptr_sized_int_type(self.engine.get_target_data(), None);
+
+        let param_types: Vec<_> = iter::once(ty_usize.into())
+            .chain(params.iter().filter_map(|a| a.as_llvm_meta(self)))
+            .collect();
+        let wrapped_ty = ret.as_llvm_fn(self, &param_types, false);
+
+        let param_types: Vec<_> = params.iter().filter_map(|a| a.as_llvm_meta(self)).collect();
+        let wrapper_ty = ret.as_llvm_fn(self, &param_types, false);
+        let wrapper_ptr = self.module.add_function(name, wrapper_ty, None);
+
+        let func_id = self.types.add_extern(name, ret, params);
+        self.functions.reserve(func_id.0 + 1);
+        self.functions.set(func_id, wrapper_ptr);
+
+        let entry = self.ctx.append_basic_block(wrapper_ptr, "entry");
+        self.builder.position_at_end(entry);
+
+        let ty_ptr = ty_usize.ptr_type(AddressSpace::default());
+        let fn_ptr = self
+            .builder
+            .build_int_to_ptr(
+                ty_usize.const_int(fn_ptr as _, false),
+                ty_ptr,
+                "wrapped-fn-ptr",
+            )
+            .unwrap();
+
+        let userdata = ty_usize.const_int(userdata as _, false).into();
+        let params = wrapper_ptr
+            .get_param_iter()
+            .map(|p| p.as_any_value_enum().try_into().unwrap());
+
+        let args: Vec<BasicMetadataValueEnum> = iter::once(userdata).chain(params).collect();
+
+        let val = self
+            .builder
+            .build_indirect_call(wrapped_ty, fn_ptr, &args, "call-fn-ptr")
+            .unwrap();
+
+        match val.try_as_basic_value().left() {
+            Some(BasicValueEnum::ArrayValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::IntValue(v)) => {
+                self.builder.build_return(Some(&v)).unwrap();
+            }
+            Some(BasicValueEnum::FloatValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::PointerValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::StructValue(v)) => todo!("{v}"),
+            Some(BasicValueEnum::VectorValue(v)) => todo!("{v}"),
+            None => {
+                self.builder.build_return(None).unwrap();
+            }
+        };
+
+        if !wrapper_ptr.verify(true) {
+            eprintln!("LLVM IR:\n");
+            self.module.print_to_stderr();
+            panic!("invalid fn");
+        }
+
+        Ok(())
+    }
+
+    pub fn run(&mut self, main: FuncId) {
+        eprintln!("LLVM IR:\n");
+        self.module.print_to_stderr();
+        // panic!();
+
+        self.module.verify().unwrap();
+
+        // FIXME: validate the main function signature
+        unsafe {
+            self.engine.run_function(*self.functions.get(main), &[]);
+        }
+    }
+}
+
+/*use std::{
     collections::{hash_map::Entry, HashMap},
     fmt, iter,
     rc::Rc,
@@ -1071,4 +1681,4 @@ fn context() -> &'static Context {
     }
 
     CTX.with(|c| *c)
-}
+}*/

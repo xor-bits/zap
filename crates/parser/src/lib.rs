@@ -40,24 +40,6 @@ impl fmt::Display for Error {
 
 //
 
-pub trait AsTypeId {
-    const TYPE_ID: TypeId;
-}
-
-impl AsTypeId for bool {
-    const TYPE_ID: TypeId = TypeId::Bool;
-}
-
-impl AsTypeId for i32 {
-    const TYPE_ID: TypeId = TypeId::I32;
-}
-
-impl AsTypeId for () {
-    const TYPE_ID: TypeId = TypeId::Void;
-}
-
-//
-
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy, Default)]
 #[repr(u8)]
@@ -105,9 +87,9 @@ impl PartialEq for TypeId {
 impl Eq for TypeId {}
 
 impl TypeId {
-    pub fn from_type<T: AsTypeId>() -> Self {
-        T::TYPE_ID
-    }
+    // pub fn from_type<T: AsTypeId>() -> Self {
+    //     T::TYPE_ID
+    // }
 
     /// Returns `true` if the type id is [`I32`].
     ///

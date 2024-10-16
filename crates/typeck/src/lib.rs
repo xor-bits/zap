@@ -21,14 +21,14 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 //
 
-#[derive(Debug, Clone, Copy)]
-pub struct VarId(usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VarId(pub usize);
 
-#[derive(Debug, Clone, Copy)]
-pub struct TmpId(usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TmpId(pub usize);
 
-#[derive(Debug, Clone, Copy)]
-pub struct FuncId(usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FuncId(pub usize);
 
 //
 
@@ -51,7 +51,19 @@ impl Module {
         }
     }
 
-    pub fn add_extern(&mut self, name: &str, ret: Type, params: &[Type]) {
+    pub fn get_type(&self, id: LinkedType) -> &Type {
+        &self.types.type_links[id.0]
+    }
+
+    pub fn get_function(&self, id: FuncId) -> &Function {
+        &self.functions[id.0]
+    }
+
+    pub fn functions(&self) -> &[Function] {
+        &self.functions[..]
+    }
+
+    pub fn add_extern(&mut self, name: &str, ret: Type, params: &[Type]) -> FuncId {
         let fn_id = FuncId(self.functions.len());
         self.externs
             .get_or_insert_with(Default::default)
@@ -62,17 +74,20 @@ impl Module {
                 .iter()
                 .map(|ty| self.types.create_known(*ty))
                 .collect(),
+            is_extern: true,
             stmts: Vec::new(),
             variables: Vec::new(),
             variables_raw: HashMap::new(),
             temporaries: Vec::new(),
         });
+        fn_id
     }
 
-    pub fn process(&mut self, ast: &Ast<Root>) -> Result<()> {
+    pub fn process(&mut self, ast: &Ast<Root>) -> Result<FuncId> {
         let mut func = Function {
             returns: self.types.create_known(Type::Void),
             params: [].into(),
+            is_extern: false,
             stmts: Vec::new(),
             variables: Vec::new(),
             variables_raw: HashMap::new(),
@@ -81,9 +96,9 @@ impl Module {
 
         ast.inner.process(self, &mut func)?;
 
+        let main = FuncId(self.functions.len());
         self.functions.push(func);
-
-        Ok(())
+        Ok(main)
     }
 
     pub fn dump(&self) {
@@ -122,6 +137,11 @@ impl Module {
                         print!("   - %{}: ", dst.0);
                         self.print_linked_type(func.temporaries[dst.0]);
                         print!(" = {name}");
+                    }
+                    Statement::Func { dst, src } => {
+                        print!("   - %{}: ", dst.0);
+                        self.print_linked_type(func.temporaries[dst.0]);
+                        print!(" = {:?}", src);
                     }
                     Statement::Const { dst, src } => {
                         print!("   - %{}: ", dst.0);
@@ -259,7 +279,7 @@ impl Process for Expr {
                 let name = src.0.clone();
                 let src = *src.1;
 
-                let dst = function.new_tmpid(module.types.create_known(Type::Func(src.0)));
+                let dst = function.new_tmpid(module.types.create_known(Type::Func(src)));
                 // let dst = function.new_tmpid(module.functions[src.0].returns);
 
                 function.stmts.push(Statement::Extern { dst, name, src });
@@ -315,6 +335,7 @@ impl Process for Func {
             params: (0..self.proto.args.iter().len())
                 .map(|_| module.types.create())
                 .collect(),
+            is_extern: false,
             stmts: Vec::new(),
             variables: Vec::new(),
             variables_raw: HashMap::new(),
@@ -323,9 +344,13 @@ impl Process for Func {
 
         self.block.process(module, &mut func)?;
 
-        let func_id = module.functions.len();
+        let func_id = FuncId(module.functions.len());
         module.functions.push(func);
-        Ok(function.new_tmpid(module.types.create_known(Type::Func(func_id))))
+
+        let dst = function.new_tmpid(module.types.create_known(Type::Func(func_id)));
+        function.stmts.push(Statement::Func { dst, src: func_id });
+
+        Ok(dst)
     }
 }
 
@@ -343,7 +368,7 @@ impl Process for Call {
             return Err(Error::NotCallable);
         };
 
-        let func_ref = &module.functions[func_id];
+        let func_ref = &module.functions[func_id.0];
         let dst = function.new_tmpid(func_ref.returns);
 
         for (arg, param) in args.iter().zip(func_ref.params.iter()) {
@@ -414,16 +439,25 @@ fn type_hint(v: Option<&str>) -> Result<Option<Type>> {
 
 #[derive(Debug)]
 pub struct Function {
-    returns: LinkedType,
-    params: Box<[LinkedType]>,
-    stmts: Vec<Statement>,
+    pub returns: LinkedType,
+    pub params: Box<[LinkedType]>,
+    pub stmts: Vec<Statement>,
+    pub is_extern: bool,
 
-    variables: Vec<LinkedType>,
+    pub variables: Vec<LinkedType>,
     variables_raw: HashMap<Rc<str>, VarId>,
-    temporaries: Vec<LinkedType>,
+    pub temporaries: Vec<LinkedType>,
 }
 
 impl Function {
+    pub fn var(&self, var: VarId) -> LinkedType {
+        self.variables[var.0]
+    }
+
+    pub fn tmp(&self, tmp: TmpId) -> LinkedType {
+        self.temporaries[tmp.0]
+    }
+
     pub fn new_varid(&mut self, ty: LinkedType) -> VarId {
         let id = VarId(self.variables.len());
         self.variables.push(ty);
@@ -457,6 +491,10 @@ pub enum Statement {
         dst: TmpId,
         src: FuncId,
         name: Rc<str>,
+    },
+    Func {
+        dst: TmpId,
+        src: FuncId,
     },
     Const {
         dst: TmpId,
@@ -519,7 +557,7 @@ impl Types {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
-    Func(usize),
+    Func(FuncId),
     Bool,
     I32,
     Str,

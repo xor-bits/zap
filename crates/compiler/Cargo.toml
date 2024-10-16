@@ -9,3 +9,4 @@ edition.workspace = true
 codegen.path = "../codegen"
 lexer.path = "../lexer"
 parser.path = "../parser"
+typeck.path = "../typeck"

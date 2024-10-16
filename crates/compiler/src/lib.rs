@@ -1,16 +1,18 @@
 use core::fmt;
 use std::sync::Mutex;
 
-use codegen::{CodeGen, FnAsLlvm, ModuleGen};
+use codegen::{AsType, CodeGen, FnAsLlvm, ModuleGen};
+// use codegen::{CodeGen, FnAsLlvm, ModuleGen};
 use lexer::Lexer;
 use parser::{
     ast::{Ast, Root},
-    AsTypeId, TypeId,
+    TypeId,
 };
+use typeck::Type;
 
 //
 
-pub use codegen::Str;
+// pub use codegen::Str;
 
 //
 
@@ -61,17 +63,17 @@ pub struct Compiler {
 }
 
 pub trait Func<A> {
-    const RETURN: TypeId;
-    const ARGS: &'static [TypeId];
+    const RETURN: Type;
+    const ARGS: &'static [Type];
 
     fn into_wrapper_ptr_and_id(self) -> (usize, usize);
 }
 
 macro_rules! gen_closure_wrapper {
     ($($arg_id:ident : $arg_t:ident),* $(,)?) => {
-        impl<$($arg_t : AsTypeId,)* Ret: AsTypeId, Fun: Send + FnMut($($arg_t),*) -> Ret> Func<($($arg_t,)*)> for Fun {
-            const RETURN: TypeId = Ret::TYPE_ID;
-            const ARGS: &'static [TypeId] = &[$($arg_t::TYPE_ID),*];
+        impl<$($arg_t : AsType,)* Ret: AsType, Fun: Send + FnMut($($arg_t),*) -> Ret> Func<($($arg_t,)*)> for Fun {
+            const RETURN: Type = Ret::TYPE_ID;
+            const ARGS: &'static [Type] = &[$($arg_t::TYPE_ID),*];
 
             fn into_wrapper_ptr_and_id(self) -> (usize, usize) {
                 static REG: Mutex<Vec<usize>> = Mutex::new(Vec::new());
@@ -85,7 +87,7 @@ macro_rules! gen_closure_wrapper {
                 reg.push(untyped_closure_ptr);
                 drop(reg);
 
-                extern "C" fn wrapper<$($arg_t: AsTypeId,)* Ret: AsTypeId>(index: usize, $($arg_id: $arg_t),*) -> Ret {
+                extern "C" fn wrapper<$($arg_t: AsType,)* Ret: AsType>(index: usize, $($arg_id: $arg_t),*) -> Ret {
                     let reg = REG.lock().unwrap();
 
                     let untyped_closure_ptr = reg[index];
@@ -129,7 +131,7 @@ impl Compiler {
         unsafe {
             self.module
                 .get_or_insert_with(|| self.codegen.module())
-                .add_extern_userdata(name, wrapper, index, F::RETURN, F::ARGS.to_vec())?;
+                .add_extern_userdata(name, wrapper, index, F::RETURN, F::ARGS)?;
         }
 
         Ok(())
@@ -151,11 +153,15 @@ impl Compiler {
 
         // TODO: type checking before code gen
 
-        module.add(ast).expect("code generation should not fail");
+        let main = module.add(&ast);
+        module.run(main);
 
-        let res = module.run()?;
+        // .expect("code generation should not fail");
 
-        Ok(res)
+        // let res = module.run()?;
+
+        todo!()
+        // Ok(res)
     }
 }
 

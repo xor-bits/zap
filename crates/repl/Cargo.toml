@@ -9,6 +9,6 @@ edition.workspace = true
 parser.path = "../parser"
 lexer.path = "../lexer"
 typeck.path = "../typeck"
-# compiler.path = "../compiler"
+compiler.path = "../compiler"
 # interpreter.path = "../interpreter"
 bytecode.path = "../bytecode"
