@@ -75,25 +75,23 @@ pub struct Ast<T> {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Root {
-    pub inner: Vec<RootItem>,
+    pub stmts: Vec<Stmt>,
 }
 
 impl Parse for Root {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        let mut inner = Vec::new();
+        let mut stmts = Vec::new();
         loop {
             let mut look = tokens.look1();
             if look.peek(Token::Semi) {
                 _ = tokens.next();
             } else if look.peek(Token::Eoi) {
                 break;
-            } else if look.peek(Token::Ident) || look.peek(Token::Test) {
-                inner.push(tokens.parse()?);
             } else {
-                return Err(look.err());
+                stmts.push(tokens.parse()?);
             }
         }
-        Ok(Self { inner })
+        Ok(Self { stmts })
     }
 }
 

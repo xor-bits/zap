@@ -4,8 +4,8 @@ use std::{
 };
 
 use parser::ast::{
-    AnyExpr, Ast, BinaryOp, Block, Call, Expr, Func, Ident, Init, Return, Root, RootItem, Stmt,
-    Test,
+    AnyExpr, Ast, BinaryOp, Block, Call, Expr, Func, Ident, Init, Return, Root, RootItem, Set,
+    Stmt, Test,
 };
 
 //
@@ -115,6 +115,11 @@ impl Module {
                 println!();
             }
 
+            if func.is_extern {
+                println!(" - is_extern");
+                continue;
+            }
+
             println!(" - stmts: ");
             for stmt in func.stmts.iter() {
                 match stmt {
@@ -192,7 +197,7 @@ impl Process for Root {
     type Return = ();
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        for item in self.inner.iter() {
+        for item in self.stmts.iter() {
             item.process(module, function)?;
         }
         Ok(())
@@ -389,14 +394,20 @@ impl Process for Call {
 impl Process for Stmt {
     type Return = Option<TmpId>;
 
-    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Option<TmpId>> {
+    fn process(
+        &self,
+        module: &mut Module,
+        function: &mut Function,
+    ) -> Result<<Self as Process>::Return> {
         match self {
             Stmt::Init(v) => {
                 v.process(module, function)?;
                 Ok(None)
-                // Ok(function.new_tmpid(types.create_known(Type::Void)))
             }
-            Stmt::Set(_) => todo!(),
+            Stmt::Set(v) => {
+                v.process(module, function)?;
+                Ok(None)
+            }
             Stmt::Cond(_) => todo!(),
             Stmt::Loop(_) => todo!(),
             Stmt::Expr(v) => Ok(Some(v.expr.process(module, function)?)),
@@ -405,6 +416,37 @@ impl Process for Stmt {
                 Ok(None)
             }
         }
+    }
+}
+
+impl Process for Set {
+    type Return = ();
+
+    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+        for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
+            let src = expr.process(module, function)?;
+            let dst = *function
+                .variables_raw
+                .get(target.path.ident.value.as_str())
+                .ok_or_else(|| Error::VariableNotFound(target.path.ident.value.clone()))?;
+
+            // let src_ty_link = function.tmp(src);
+            // let dst_ty_link = function.var(dst);
+            // let src_ty = module.get_type(src_ty_link);
+            // let dst_ty = module.get_type(dst_ty_link);
+
+            // match (src_ty, dst_ty) {
+            //     (Type::Unknown, Type::Unknown) => {}
+            //     // (Type::Unknown, _) => {
+            //     //     module.types.type_links[];
+            //     // }
+            //     _ => {}
+            // }
+
+            function.stmts.push(Statement::Let { dst, src });
+        }
+
+        Ok(())
     }
 }
 

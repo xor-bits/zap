@@ -170,7 +170,7 @@ impl<T: Compile> Compile for Ast<T> {
 impl Compile for Root {
     fn compile(&self, bc: &mut Bytecode) -> Result<()> {
         let addr = compile_functionlike(bc, |bc| {
-            for item in self.inner.iter() {
+            for item in self.stmts.iter() {
                 item.compile(bc)?;
             }
             Ok(())

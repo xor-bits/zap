@@ -20,8 +20,8 @@ use inkwell::{
 use parser::ast::{Ast, BinaryOp, Root};
 use typeck::{FuncId, Function, Literal, Statement, TmpId, Type, VarId};
 
-use self::types::AsLlvm;
-pub use self::types::{AsType, FnAsLlvm};
+use self::types::{AsLlvm, AsLlvmConst};
+pub use self::types::{AsType, FnAsLlvm, Str};
 
 //
 
@@ -60,7 +60,7 @@ fn context() -> &'static Context {
     CTX.with(|c| *c)
 }
 
-fn to_llvm_fn_type<'a>(
+/* fn to_llvm_fn_type<'a>(
     ctx: &'a Context,
     ty: &Type,
     param_types: &[BasicMetadataTypeEnum<'a>],
@@ -100,15 +100,6 @@ fn to_llvm_basic_type<'a>(ctx: &'a Context, ty: &Type) -> BasicTypeEnum<'a> {
     }
 }
 
-fn to_prototype<'a>(ctx: &'a Context, code: &typeck::Module, func: &Function) -> FunctionType<'a> {
-    let param_types: Box<[_]> = func
-        .params
-        .iter()
-        .map(|ty| to_llvm_metadata_type(ctx, code.get_type(*ty)))
-        .collect();
-    to_llvm_fn_type(ctx, code.get_type(func.returns), &param_types)
-}
-
 fn to_const<'a>(ctx: &'a Context, lit: &Literal) -> BasicValueEnum<'a> {
     match lit {
         typeck::Literal::Bool(v) => ctx
@@ -118,6 +109,21 @@ fn to_const<'a>(ctx: &'a Context, lit: &Literal) -> BasicValueEnum<'a> {
         typeck::Literal::I32(i) => ctx.i32_type().const_int(*i as u64, false).into(),
         typeck::Literal::Str(_) => todo!(),
     }
+} */
+
+fn to_prototype<'a>(
+    gen: &ModuleGen,
+    code: &typeck::Module,
+    func: &Function,
+) -> FunctionType<'static> {
+    let param_types: Box<[_]> = func
+        .params
+        .iter()
+        .map(|ty| code.get_type(*ty).as_llvm_meta(gen).unwrap())
+        .collect();
+
+    code.get_type(func.returns)
+        .as_llvm_fn(gen, &param_types, false)
 }
 
 //
@@ -176,14 +182,16 @@ impl<K, V: Copy> Default for IdMap<K, V> {
     }
 }
 
-impl<K: IndexOf, V> IdMap<K, V> {
+impl<K: Copy + IndexOf, V> IdMap<K, V> {
     #[track_caller]
     fn get(&self, k: K) -> &V {
+        // println!("get {}", k.index());
         self.vals[k.index()].as_ref().unwrap()
     }
 
     #[track_caller]
     fn set(&mut self, k: K, v: V) {
+        // println!("set {}", k.index());
         self.vals[k.index()] = Some(v);
     }
 }
@@ -261,7 +269,7 @@ impl ModuleGen {
                 continue;
             }
 
-            let proto = to_prototype(self.ctx, &self.types, func);
+            let proto = to_prototype(self, &self.types, func);
             let func = self
                 .module
                 .add_function("fixme-keep-function-name", proto, None);
@@ -349,10 +357,7 @@ impl ModuleGen {
                             let val = self
                                 .builder
                                 .build_load(
-                                    to_llvm_basic_type(
-                                        self.ctx,
-                                        self.types.get_type(func.var(*src)),
-                                    ),
+                                    self.types.get_type(func.var(*src)).as_llvm(self).unwrap(),
                                     *ptr,
                                     "fixme-keep-variable-name",
                                 )
@@ -373,7 +378,7 @@ impl ModuleGen {
                         tmp_map.set(*dst, FuncOr::FunctionValue(func));
                     }
                     Statement::Const { dst, src } => {
-                        tmp_map.set(*dst, FuncOr::T(to_const(self.ctx, src)));
+                        tmp_map.set(*dst, FuncOr::T(src.as_llvm_const(self).unwrap()));
                     }
                     Statement::BinExpr { dst, lhs, op, rhs } => {
                         let lhs = *tmp_map
@@ -386,29 +391,31 @@ impl ModuleGen {
                             .expect("cannot operate on a function value");
                         let ty = self.types.get_type(func.tmp(*dst));
 
-                        match (ty, op) {
-                            (Type::I32, BinaryOp::Add) => {
-                                self.builder
-                                    .build_int_add(
-                                        lhs.into_int_value(),
-                                        rhs.into_int_value(),
-                                        "builtin-i32-add",
-                                    )
-                                    .unwrap();
-                            }
-                            (Type::I32, BinaryOp::Mul) => {
-                                self.builder
-                                    .build_int_mul(
-                                        lhs.into_int_value(),
-                                        rhs.into_int_value(),
-                                        "builtin-i32-mul",
-                                    )
-                                    .unwrap();
-                            }
+                        let res = match (ty, op) {
+                            (Type::I32, BinaryOp::Add) => self
+                                .builder
+                                .build_int_add(
+                                    lhs.into_int_value(),
+                                    rhs.into_int_value(),
+                                    "builtin-i32-add",
+                                )
+                                .unwrap()
+                                .as_basic_value_enum(),
+                            (Type::I32, BinaryOp::Mul) => self
+                                .builder
+                                .build_int_mul(
+                                    lhs.into_int_value(),
+                                    rhs.into_int_value(),
+                                    "builtin-i32-mul",
+                                )
+                                .unwrap()
+                                .as_basic_value_enum(),
                             _ => {
                                 todo!("invalid operation: {ty:?} {}", op.as_str());
                             }
-                        }
+                        };
+
+                        tmp_map.set(*dst, FuncOr::T(res));
                     }
                     Statement::Call { dst, func, args } => {
                         let tmp = tmp_map

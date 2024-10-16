@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use compiler::Compiler;
+use compiler::{Compiler, Str};
 // use interpreter::Interpreter;
 use bytecode::Runtime;
 use lexer::Lexer;
@@ -26,7 +26,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // compiler.add_extern("printi", Type::Void, &[Type::Str]);
     compiler.add("printi", |i: i32| println!("{i}")).unwrap();
-    compiler.run("main:=fn(){x:=4;printi(x);}").unwrap();
+    compiler.add("prints", |s: Str| println!("{s}")).unwrap();
+    compiler
+        .run(
+            "
+            x := 4;
+            printi(x);
+            x = x + 2;
+            printi(x);
+            y := \"test\";
+            prints(y);
+        ",
+        )
+        .unwrap();
 
     // println!("{module:#?}");
 

@@ -12,7 +12,7 @@ use typeck::Type;
 
 //
 
-// pub use codegen::Str;
+pub use codegen::Str;
 
 //
 
