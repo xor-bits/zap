@@ -7,6 +7,7 @@ use std::{
 };
 
 use inkwell::{
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     execution_engine::ExecutionEngine,
@@ -18,7 +19,7 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
 };
 use parser::ast::{Ast, BinaryOp, Root};
-use typeck::{FuncId, Function, Literal, Statement, TmpId, Type, VarId};
+use typeck::{FuncId, Function, LabelId, Literal, Statement, TmpId, Type, VarId};
 
 use self::types::{AsLlvm, AsLlvmConst};
 pub use self::types::{AsType, FnAsLlvm, Str};
@@ -145,6 +146,12 @@ impl IndexOf for TmpId {
 }
 
 impl IndexOf for FuncId {
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl IndexOf for LabelId {
     fn index(self) -> usize {
         self.0
     }
@@ -305,6 +312,7 @@ impl ModuleGen {
 
         let mut tmp_map: IdMap<TmpId, FuncOr<BasicValueEnum>> = IdMap::new();
         let mut var_map: IdMap<VarId, FuncOr<PointerValue>> = IdMap::new();
+        let mut label_map: IdMap<LabelId, BasicBlock> = IdMap::new();
 
         for (i, func) in self.types.functions().iter().enumerate() {
             if func.is_extern {
@@ -321,8 +329,10 @@ impl ModuleGen {
 
             tmp_map.clear();
             var_map.clear();
+            label_map.clear();
             tmp_map.reserve(func.temporaries.len());
             var_map.reserve(func.variables.len());
+            label_map.reserve(func.labels);
 
             for stmt in func.stmts.iter() {
                 match stmt {
@@ -448,13 +458,25 @@ impl ModuleGen {
                         tmp_map.set(*dst, FuncOr::T(val));
                     }
                     Statement::Return { src } => todo!(),
+                    Statement::Label { id } => {
+                        let block = self.ctx.append_basic_block(func_val, "fixme-keep-labels");
+                        label_map.set(*id, block);
+
+                        self.builder.build_unconditional_branch(block).unwrap();
+                        self.builder.position_at_end(block);
+                    }
+
+                    Statement::UnconditionalJump { id } => {
+                        let block = *label_map.get(*id);
+                        self.builder.build_unconditional_branch(block).unwrap();
+                    }
                 }
             }
 
             self.alloca_builder
                 .build_unconditional_branch(post_alloca)
                 .unwrap();
-            self.builder.build_return(None).unwrap();
+            // self.builder.build_return(None).unwrap();
 
             if !func_val.verify(true) {
                 eprintln!("LLVM IR:\n");

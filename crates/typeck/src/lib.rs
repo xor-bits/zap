@@ -4,8 +4,8 @@ use std::{
 };
 
 use parser::ast::{
-    AnyExpr, Ast, BinaryOp, Block, Call, Expr, Func, Ident, Init, Return, Root, RootItem, Set,
-    Stmt, Test,
+    AnyExpr, Ast, BinaryOp, Block, Call, Expr, Func, Ident, Init, Loop, Return, Root, RootItem,
+    Set, Stmt, Test,
 };
 
 //
@@ -29,6 +29,9 @@ pub struct TmpId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FuncId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LabelId(pub usize);
 
 //
 
@@ -79,6 +82,7 @@ impl Module {
             variables: Vec::new(),
             variables_raw: HashMap::new(),
             temporaries: Vec::new(),
+            labels: 0,
         });
         fn_id
     }
@@ -92,6 +96,7 @@ impl Module {
             variables: Vec::new(),
             variables_raw: HashMap::new(),
             temporaries: Vec::new(),
+            labels: 0,
         };
 
         ast.inner.process(self, &mut func)?;
@@ -167,6 +172,12 @@ impl Module {
                         print!("   - return %{}: ", src.0);
                         self.print_linked_type(func.temporaries[src.0]);
                     }
+                    Statement::Label { id } => {
+                        print!("   - label {}", id.0);
+                    }
+                    Statement::UnconditionalJump { id } => {
+                        print!("   - jump {}", id.0);
+                    }
                 }
 
                 println!();
@@ -219,8 +230,12 @@ impl Process for Init {
     type Return = ();
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
-            let src = expr.process(module, function)?;
+        let mut expr_results = Vec::with_capacity(self.exprs.iter().len());
+        for expr in self.exprs.iter() {
+            expr_results.push(expr.process(module, function)?);
+        }
+
+        for (target, src) in self.targets.iter().zip(expr_results) {
             let dst = function.new_varid(function.temporaries[src.0]);
 
             // shadow old variables
@@ -345,6 +360,7 @@ impl Process for Func {
             variables: Vec::new(),
             variables_raw: HashMap::new(),
             temporaries: Vec::new(),
+            labels: 0,
         };
 
         self.block.process(module, &mut func)?;
@@ -409,7 +425,10 @@ impl Process for Stmt {
                 Ok(None)
             }
             Stmt::Cond(_) => todo!(),
-            Stmt::Loop(_) => todo!(),
+            Stmt::Loop(v) => {
+                v.process(module, function)?;
+                Ok(None)
+            }
             Stmt::Expr(v) => Ok(Some(v.expr.process(module, function)?)),
             Stmt::Return(v) => {
                 v.process(module, function)?;
@@ -423,8 +442,12 @@ impl Process for Set {
     type Return = ();
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
-            let src = expr.process(module, function)?;
+        let mut expr_results = Vec::with_capacity(self.exprs.iter().len());
+        for expr in self.exprs.iter() {
+            expr_results.push(expr.process(module, function)?);
+        }
+
+        for (target, src) in self.targets.iter().zip(expr_results) {
             let dst = *function
                 .variables_raw
                 .get(target.path.ident.value.as_str())
@@ -443,8 +466,25 @@ impl Process for Set {
             //     _ => {}
             // }
 
-            function.stmts.push(Statement::Let { dst, src });
+            function.stmts.push(Statement::Store { dst, src });
         }
+
+        Ok(())
+    }
+}
+
+impl Process for Loop {
+    type Return = ();
+
+    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+        let id = function.new_labelid();
+        function.stmts.push(Statement::Label { id });
+
+        for stmt in self.block.stmts.iter() {
+            stmt.process(module, function)?;
+        }
+
+        function.stmts.push(Statement::UnconditionalJump { id });
 
         Ok(())
     }
@@ -489,6 +529,7 @@ pub struct Function {
     pub variables: Vec<LinkedType>,
     variables_raw: HashMap<Rc<str>, VarId>,
     pub temporaries: Vec<LinkedType>,
+    pub labels: usize,
 }
 
 impl Function {
@@ -509,6 +550,12 @@ impl Function {
     pub fn new_tmpid(&mut self, ty: LinkedType) -> TmpId {
         let id = TmpId(self.temporaries.len());
         self.temporaries.push(ty);
+        id
+    }
+
+    pub fn new_labelid(&mut self) -> LabelId {
+        let id = LabelId(self.labels);
+        self.labels += 1;
         id
     }
 }
@@ -555,6 +602,12 @@ pub enum Statement {
     },
     Return {
         src: TmpId,
+    },
+    Label {
+        id: LabelId,
+    },
+    UnconditionalJump {
+        id: LabelId,
     },
 }
 

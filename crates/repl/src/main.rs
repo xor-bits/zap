@@ -3,7 +3,7 @@ use std::{
     error::Error,
     fs::read_to_string,
     io::{stdin, stdout, Write},
-    thread,
+    thread::{self, Thread},
     time::Duration,
 };
 
@@ -28,14 +28,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     compiler.add("printi", |i: i32| println!("{i}")).unwrap();
     compiler.add("prints", |s: Str| println!("{s}")).unwrap();
     compiler
+        .add("wait", || thread::sleep(Duration::from_millis(200)))
+        .unwrap();
+    compiler
         .run(
             "
-            x := 4;
-            printi(x);
-            x = x + 2;
-            printi(x);
-            y := \"test\";
-            prints(y);
+            a := 0;
+            b := 1;
+            for {
+                printi(a);
+                a, b = b, a + b;
+                wait();
+            }
         ",
         )
         .unwrap();
