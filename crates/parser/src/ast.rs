@@ -80,18 +80,9 @@ pub struct Root {
 
 impl Parse for Root {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        let mut stmts = Vec::new();
-        loop {
-            let mut look = tokens.look1();
-            if look.peek(Token::Semi) {
-                _ = tokens.next();
-            } else if look.peek(Token::Eoi) {
-                break;
-            } else {
-                stmts.push(tokens.parse()?);
-            }
-        }
-        Ok(Self { stmts })
+        Ok(Self {
+            stmts: tokens.parse()?,
+        })
     }
 }
 
@@ -241,15 +232,26 @@ pub struct Block {
 
 impl Parse for Block {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        let open = tokens.parse()?;
+        Ok(Self {
+            ty: TypeId::Unknown,
+            open: tokens.parse()?,
+            stmts: tokens.parse()?,
+            auto_return: false,
+            close: tokens.parse()?,
+        })
+    }
+}
+
+impl Parse for Vec<Stmt> {
+    fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let mut stmts = Vec::new();
-        while !tokens.peek1(Token::RBrace) {
+        while !tokens.peek1(Token::RBrace) && !tokens.peek1(Token::Eoi) {
             stmts.push(tokens.parse()?);
 
-            let mut has_semi = false;
+            // let mut has_semi = false;
             while tokens.peek1(Token::Semi) {
                 // skip all semicolons
-                has_semi = true;
+                // has_semi = true;
                 _ = tokens.next_token()?;
             }
 
@@ -270,15 +272,8 @@ impl Parse for Block {
                 });
             } */
         }
-        let close = tokens.parse()?;
 
-        Ok(Self {
-            ty: TypeId::Unknown,
-            open,
-            stmts,
-            auto_return: false,
-            close,
-        })
+        Ok(stmts)
     }
 }
 
