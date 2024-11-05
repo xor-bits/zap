@@ -4,8 +4,7 @@ use std::{
 };
 
 use parser::ast::{
-    self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Init, Loop, Return, Root, RootItem, Set,
-    Stmt, Test,
+    self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Init, Loop, Return, Root, Set, Stmt, Test,
 };
 
 //
@@ -207,17 +206,6 @@ impl Process for Root {
             item.process(module, function)?;
         }
         Ok(())
-    }
-}
-
-impl Process for RootItem {
-    type Return = ();
-
-    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        match self {
-            RootItem::Init(v) => v.process(module, function),
-            RootItem::Test(v) => v.process(module, function),
-        }
     }
 }
 

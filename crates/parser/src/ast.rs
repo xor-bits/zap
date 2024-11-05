@@ -108,63 +108,6 @@ impl Parse for Root {
 //
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RootItem {
-    // Init(RootInit),
-    Init(Init),
-    Test(Test),
-}
-
-impl Parse for RootItem {
-    fn parse(tokens: &mut ParseStream) -> Result<Self> {
-        let mut look = tokens.look1();
-        if look.peek(Token::Ident) {
-            Ok(Self::Init(tokens.parse()?))
-        } else if look.peek(Token::Test) {
-            Ok(Self::Test(tokens.parse()?))
-        } else {
-            Err(look.err())
-        }
-    }
-}
-
-// impl AstDisplay for RootItem {
-//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
-//         match self {
-//             RootItem::Init(v) => v.fmt(f, i),
-//             RootItem::Test(v) => v.fmt(f, i),
-//         }
-//     }
-// }
-
-//
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Parse)]
-pub struct RootInit {
-    pub targets: CommaSeparated<Target>,
-    pub walrus: Walrus,
-    pub exprs: CommaSeparated<Expr>,
-}
-
-// impl AstDisplay for RootInit {
-//     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
-//         for (target, expr) in self.targets.iter().zip(self.exprs.iter()) {
-//             write!(f, "{}", target.path.ident.value)?;
-//             if !expr.ty.is_none() {
-//                 write!(f, ": <{}>", expr.ty.0)?;
-//             }
-//             write!(f, " := ")?;
-//             expr.fmt(f, i)?;
-//         }
-
-//         Ok(())
-//     }
-// }
-
-//
-
-#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Parse)]
 pub struct Target {
     pub path: Path,
