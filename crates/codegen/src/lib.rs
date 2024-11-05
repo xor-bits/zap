@@ -1,10 +1,4 @@
-use std::{
-    borrow::BorrowMut,
-    collections::HashMap,
-    fmt, iter,
-    marker::PhantomData,
-    ops::{Index, IndexMut},
-};
+use std::{fmt, iter, marker::PhantomData};
 
 use inkwell::{
     basic_block::BasicBlock,
@@ -12,14 +6,14 @@ use inkwell::{
     context::Context,
     execution_engine::ExecutionEngine,
     module::Module,
-    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    types::FunctionType,
     values::{
         AnyValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
     },
     AddressSpace, OptimizationLevel,
 };
 use parser::ast::{Ast, BinaryOp, Root};
-use typeck::{BlockId, FuncId, Function, LabelId, Literal, Statement, TmpId, Type, VarId};
+use typeck::{BlockId, FuncId, Function, Statement, TmpId, Type, VarId};
 
 use self::types::{AsLlvm, AsLlvmConst};
 pub use self::types::{AsType, FnAsLlvm, Str};
@@ -391,7 +385,7 @@ impl ModuleGen {
                                 tmp_map.set(*dst, FuncOr::FunctionValue(*f));
                             }
                         },
-                        Statement::Extern { dst, src, name } => {
+                        Statement::Extern { dst, src, .. } => {
                             let func = *self.functions.get(*src);
                             tmp_map.set(*dst, FuncOr::FunctionValue(func));
                         }
@@ -469,7 +463,7 @@ impl ModuleGen {
 
                             tmp_map.set(*dst, FuncOr::T(val));
                         }
-                        Statement::Return { src } => todo!(),
+                        Statement::Return { .. } => todo!(),
                         Statement::ReturnVoid => {
                             self.builder.build_return(None).unwrap();
                         }

@@ -4,8 +4,8 @@ use std::{
 };
 
 use parser::ast::{
-    self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Ident, Init, Loop, Return, Root,
-    RootItem, Set, Stmt, Test,
+    self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Init, Loop, Return, Root, RootItem, Set,
+    Stmt, Test,
 };
 
 //
@@ -248,7 +248,7 @@ impl Process for Init {
 impl Process for Test {
     type Return = ();
 
-    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+    fn process(&self, _module: &mut Module, _function: &mut Function) -> Result<Self::Return> {
         todo!()
     }
 }
@@ -468,7 +468,7 @@ impl Process for Set {
 impl Process for Cond {
     type Return = ();
 
-    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+    fn process(&self, _module: &mut Module, _function: &mut Function) -> Result<Self::Return> {
         todo!()
     }
 }

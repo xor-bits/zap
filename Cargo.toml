@@ -3,7 +3,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["crates/bytecode", "crates/lexer", "crates/macros", "crates/parser", "crates/repl"]
+members = ["crates/lexer", "crates/macros", "crates/parser", "crates/repl"]
 resolver = "2"
 default-members = ["crates/repl"]
 

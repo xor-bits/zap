@@ -23,12 +23,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         .run(
             "
             fib := fn() {
+                prints(\"Fibonacci series:\");
                 a := 0;
                 b := 1;
                 for {
                     printi(a);
                     a, b = b, a + b;
                     wait();
+
+                    // if a >= 1000 {
+                    //     return;
+                    // }
                 }
             }
 

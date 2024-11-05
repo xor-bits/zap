@@ -6,9 +6,9 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parser.path = "../parser"
-lexer.path = "../lexer"
-typeck.path = "../typeck"
+# parser.path = "../parser"
+# lexer.path = "../lexer"
+# typeck.path = "../typeck"
 compiler.path = "../compiler"
 # interpreter.path = "../interpreter"
-bytecode.path = "../bytecode"
+# bytecode.path = "../bytecode"

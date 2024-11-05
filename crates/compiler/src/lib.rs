@@ -4,10 +4,7 @@ use std::sync::Mutex;
 use codegen::{AsType, CodeGen, FnAsLlvm, ModuleGen};
 // use codegen::{CodeGen, FnAsLlvm, ModuleGen};
 use lexer::Lexer;
-use parser::{
-    ast::{Ast, Root},
-    TypeId,
-};
+use parser::ast::{Ast, Root};
 use typeck::Type;
 
 //
