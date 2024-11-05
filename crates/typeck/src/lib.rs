@@ -4,8 +4,8 @@ use std::{
 };
 
 use parser::ast::{
-    AnyExpr, Ast, BinaryOp, Block, Call, Expr, Func, Ident, Init, Loop, Return, Root, RootItem,
-    Set, Stmt, Test,
+    self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Ident, Init, Loop, Return, Root,
+    RootItem, Set, Stmt, Test,
 };
 
 //
@@ -32,6 +32,9 @@ pub struct FuncId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LabelId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BlockId(pub usize);
 
 //
 
@@ -71,35 +74,23 @@ impl Module {
         self.externs
             .get_or_insert_with(Default::default)
             .insert(name.into(), fn_id);
-        self.functions.push(Function {
-            returns: self.types.create_known(ret),
-            params: params
+        self.functions.push(Function::new_extern(
+            self.types.create_known(ret),
+            params
                 .iter()
                 .map(|ty| self.types.create_known(*ty))
                 .collect(),
-            is_extern: true,
-            stmts: Vec::new(),
-            variables: Vec::new(),
-            variables_raw: HashMap::new(),
-            temporaries: Vec::new(),
-            labels: 0,
-        });
+            true,
+        ));
         fn_id
     }
 
     pub fn process(&mut self, ast: &Ast<Root>) -> Result<FuncId> {
-        let mut func = Function {
-            returns: self.types.create_known(Type::Void),
-            params: [].into(),
-            is_extern: false,
-            stmts: Vec::new(),
-            variables: Vec::new(),
-            variables_raw: HashMap::new(),
-            temporaries: Vec::new(),
-            labels: 0,
-        };
+        let mut func = Function::new(self.types.create_known(Type::Void), [].into());
 
         ast.inner.process(self, &mut func)?;
+
+        func.terminate();
 
         let main = FuncId(self.functions.len());
         self.functions.push(func);
@@ -125,62 +116,66 @@ impl Module {
                 continue;
             }
 
-            println!(" - stmts: ");
-            for stmt in func.stmts.iter() {
-                match stmt {
-                    Statement::Let { dst, src } => {
-                        print!("   - let {}: ", dst.0);
-                        self.print_linked_type(func.variables[dst.0]);
-                        print!(" = %{}", src.0);
+            println!(" - blocks: ");
+            for (block_id, block) in func.blocks() {
+                println!("   - Block{}: ", block_id.0);
+                println!("   - stmts: ");
+                for stmt in block.stmts.iter() {
+                    match stmt {
+                        Statement::Let { dst, src } => {
+                            print!("     - let {}: ", dst.0);
+                            self.print_linked_type(func.variables[dst.0]);
+                            print!(" = %{}", src.0);
+                        }
+                        Statement::Store { dst, src } => {
+                            print!("     - {}: ", dst.0);
+                            self.print_linked_type(func.variables[dst.0]);
+                            print!(" = %{}", src.0);
+                        }
+                        Statement::Load { dst, src } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = {}", src.0);
+                        }
+                        Statement::Extern { dst, src: _, name } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = {name}");
+                        }
+                        Statement::Func { dst, src } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = {:?}", src);
+                        }
+                        Statement::Const { dst, src } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = {:?}", src);
+                        }
+                        Statement::BinExpr { dst, lhs, op, rhs } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = %{} {op} %{}", lhs.0, rhs.0);
+                        }
+                        Statement::Call { dst, func: f, args } => {
+                            print!("     - %{}: ", dst.0);
+                            self.print_linked_type(func.temporaries[dst.0]);
+                            print!(" = call %{} %({:?})", f.0, args);
+                        }
+                        Statement::Return { src } => {
+                            print!("     - return %{}: ", src.0);
+                            self.print_linked_type(func.temporaries[src.0]);
+                        }
+                        Statement::ReturnVoid => {
+                            print!("     - return void");
+                        }
+                        Statement::UnconditionalJump { id } => {
+                            print!("     - jump {}", id.0);
+                        }
                     }
-                    Statement::Store { dst, src } => {
-                        print!("   - {}: ", dst.0);
-                        self.print_linked_type(func.variables[dst.0]);
-                        print!(" = %{}", src.0);
-                    }
-                    Statement::Load { dst, src } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = {}", src.0);
-                    }
-                    Statement::Extern { dst, src: _, name } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = {name}");
-                    }
-                    Statement::Func { dst, src } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = {:?}", src);
-                    }
-                    Statement::Const { dst, src } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = {:?}", src);
-                    }
-                    Statement::BinExpr { dst, lhs, op, rhs } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = %{} {op} %{}", lhs.0, rhs.0);
-                    }
-                    Statement::Call { dst, func: f, args } => {
-                        print!("   - %{}: ", dst.0);
-                        self.print_linked_type(func.temporaries[dst.0]);
-                        print!(" = call %{} %({:?})", f.0, args);
-                    }
-                    Statement::Return { src } => {
-                        print!("   - return %{}: ", src.0);
-                        self.print_linked_type(func.temporaries[src.0]);
-                    }
-                    Statement::Label { id } => {
-                        print!("   - label {}", id.0);
-                    }
-                    Statement::UnconditionalJump { id } => {
-                        print!("   - jump {}", id.0);
-                    }
-                }
 
-                println!();
+                    println!();
+                }
             }
         }
     }
@@ -243,7 +238,7 @@ impl Process for Init {
                 .variables_raw
                 .insert(target.path.ident.value.as_str().into(), dst);
 
-            function.stmts.push(Statement::Let { dst, src });
+            function.push_stmt(Statement::Let { dst, src });
         }
 
         Ok(())
@@ -267,7 +262,7 @@ impl Process for Expr {
             AnyExpr::LitInt(int) => {
                 let dst = function.new_tmpid(module.types.create_known(Type::I32));
 
-                function.stmts.push(Statement::Const {
+                function.push_stmt(Statement::Const {
                     dst,
                     src: Literal::I32(int.value as _),
                 });
@@ -277,7 +272,7 @@ impl Process for Expr {
             AnyExpr::LitStr(str) => {
                 let dst = function.new_tmpid(module.types.create_known(Type::Str));
 
-                function.stmts.push(Statement::Const {
+                function.push_stmt(Statement::Const {
                     dst,
                     src: Literal::Str(str.value.as_str().into()),
                 });
@@ -287,7 +282,7 @@ impl Process for Expr {
             AnyExpr::Load(var) => {
                 if let Some(src) = function.variables_raw.get(var.value.as_str()).copied() {
                     let dst = function.new_tmpid(function.variables[src.0]);
-                    function.stmts.push(Statement::Load { dst, src });
+                    function.push_stmt(Statement::Load { dst, src });
                     return Ok(dst);
                 }
 
@@ -302,7 +297,7 @@ impl Process for Expr {
                 let dst = function.new_tmpid(module.types.create_known(Type::Func(src)));
                 // let dst = function.new_tmpid(module.functions[src.0].returns);
 
-                function.stmts.push(Statement::Extern { dst, name, src });
+                function.push_stmt(Statement::Extern { dst, name, src });
                 Ok(dst)
             }
             AnyExpr::Func(func) => func.process(module, function),
@@ -313,9 +308,7 @@ impl Process for Expr {
                 let dst = function.new_tmpid(function.temporaries[lhs.0]);
                 let op = *op;
 
-                function
-                    .stmts
-                    .push(Statement::BinExpr { dst, lhs, op, rhs });
+                function.push_stmt(Statement::BinExpr { dst, lhs, op, rhs });
 
                 Ok(dst)
             }
@@ -323,7 +316,7 @@ impl Process for Expr {
     }
 }
 
-impl Process for Block {
+impl Process for ast::Block {
     type Return = TmpId;
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
@@ -350,26 +343,22 @@ impl Process for Func {
         let ret_ty =
             type_hint(self.proto.return_ty.as_ref().map(|(_, i)| i.value.as_str()))?.unwrap();
 
-        let mut func = Function {
-            returns: module.types.create_known(ret_ty),
-            params: (0..self.proto.args.iter().len())
+        let mut func = Function::new(
+            module.types.create_known(ret_ty),
+            (0..self.proto.args.iter().len())
                 .map(|_| module.types.create())
                 .collect(),
-            is_extern: false,
-            stmts: Vec::new(),
-            variables: Vec::new(),
-            variables_raw: HashMap::new(),
-            temporaries: Vec::new(),
-            labels: 0,
-        };
+        );
 
         self.block.process(module, &mut func)?;
+
+        func.terminate();
 
         let func_id = FuncId(module.functions.len());
         module.functions.push(func);
 
         let dst = function.new_tmpid(module.types.create_known(Type::Func(func_id)));
-        function.stmts.push(Statement::Func { dst, src: func_id });
+        function.push_stmt(Statement::Func { dst, src: func_id });
 
         Ok(dst)
     }
@@ -401,7 +390,7 @@ impl Process for Call {
             }
         }
 
-        function.stmts.push(Statement::Call { dst, func, args });
+        function.push_stmt(Statement::Call { dst, func, args });
 
         Ok(dst)
     }
@@ -424,7 +413,10 @@ impl Process for Stmt {
                 v.process(module, function)?;
                 Ok(None)
             }
-            Stmt::Cond(_) => todo!(),
+            Stmt::Cond(v) => {
+                v.process(module, function)?;
+                Ok(None)
+            }
             Stmt::Loop(v) => {
                 v.process(module, function)?;
                 Ok(None)
@@ -466,10 +458,18 @@ impl Process for Set {
             //     _ => {}
             // }
 
-            function.stmts.push(Statement::Store { dst, src });
+            function.push_stmt(Statement::Store { dst, src });
         }
 
         Ok(())
+    }
+}
+
+impl Process for Cond {
+    type Return = ();
+
+    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+        todo!()
     }
 }
 
@@ -477,14 +477,15 @@ impl Process for Loop {
     type Return = ();
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        let id = function.new_labelid();
-        function.stmts.push(Statement::Label { id });
+        let id = function.push_block();
+        function.push_stmt(Statement::UnconditionalJump { id });
+        function.move_to_block(id);
 
         for stmt in self.block.stmts.iter() {
             stmt.process(module, function)?;
         }
 
-        function.stmts.push(Statement::UnconditionalJump { id });
+        function.push_stmt(Statement::UnconditionalJump { id });
 
         Ok(())
     }
@@ -500,7 +501,7 @@ impl Process for Return {
             function.new_tmpid(module.types.create_known(Type::Void))
         };
 
-        function.stmts.push(Statement::Return { src });
+        function.push_stmt(Statement::Return { src });
 
         Ok(())
     }
@@ -520,19 +521,83 @@ fn type_hint(v: Option<&str>) -> Result<Option<Type>> {
 //
 
 #[derive(Debug)]
+pub struct Block {
+    pub stmts: Vec<Statement>,
+}
+
+//
+
+#[derive(Debug)]
 pub struct Function {
     pub returns: LinkedType,
     pub params: Box<[LinkedType]>,
-    pub stmts: Vec<Statement>,
+    pub blocks: Vec<Block>,
     pub is_extern: bool,
+
+    pub current_block: BlockId,
 
     pub variables: Vec<LinkedType>,
     variables_raw: HashMap<Rc<str>, VarId>,
     pub temporaries: Vec<LinkedType>,
-    pub labels: usize,
 }
 
 impl Function {
+    pub fn new(returns: LinkedType, params: Box<[LinkedType]>) -> Self {
+        Self::new_extern(returns, params, false)
+    }
+
+    pub fn new_extern(returns: LinkedType, params: Box<[LinkedType]>, is_extern: bool) -> Self {
+        Self {
+            returns,
+            params,
+            blocks: Vec::new(),
+            is_extern,
+
+            current_block: BlockId(0),
+
+            variables: Vec::new(),
+            variables_raw: HashMap::new(),
+            temporaries: Vec::new(),
+        }
+    }
+
+    pub fn current(&self) -> Option<&Statement> {
+        self.blocks
+            .get(self.current_block.0)
+            .and_then(|b| b.stmts.last())
+    }
+
+    pub fn push_stmt(&mut self, stmt: Statement) {
+        if self.blocks.is_empty() {
+            self.push_block();
+        }
+
+        self.blocks[self.current_block.0].stmts.push(stmt);
+    }
+
+    pub fn push_block(&mut self) -> BlockId {
+        let id = BlockId(self.blocks.len());
+        self.blocks.push(Block { stmts: Vec::new() });
+        id
+    }
+
+    pub fn move_to_block(&mut self, id: BlockId) {
+        self.current_block = id;
+    }
+
+    pub fn terminate(&mut self) {
+        // println!("current: {:?}", self.current());
+        if self.current().map_or(false, |stmt| stmt.is_terminal()) {
+            return;
+        }
+
+        self.push_stmt(Statement::ReturnVoid);
+    }
+
+    pub fn blocks(&self) -> impl DoubleEndedIterator<Item = (BlockId, &Block)> + ExactSizeIterator {
+        self.blocks.iter().enumerate().map(|(i, b)| (BlockId(i), b))
+    }
+
     pub fn var(&self, var: VarId) -> LinkedType {
         self.variables[var.0]
     }
@@ -550,12 +615,6 @@ impl Function {
     pub fn new_tmpid(&mut self, ty: LinkedType) -> TmpId {
         let id = TmpId(self.temporaries.len());
         self.temporaries.push(ty);
-        id
-    }
-
-    pub fn new_labelid(&mut self) -> LabelId {
-        let id = LabelId(self.labels);
-        self.labels += 1;
         id
     }
 }
@@ -578,6 +637,7 @@ pub enum Statement {
     },
     Extern {
         dst: TmpId,
+
         src: FuncId,
         name: Rc<str>,
     },
@@ -603,12 +663,21 @@ pub enum Statement {
     Return {
         src: TmpId,
     },
-    Label {
-        id: LabelId,
-    },
+    ReturnVoid,
     UnconditionalJump {
-        id: LabelId,
+        id: BlockId,
     },
+}
+
+impl Statement {
+    pub const fn is_terminal(&self) -> bool {
+        match self {
+            Statement::Return { .. }
+            | Statement::ReturnVoid
+            | Statement::UnconditionalJump { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 //

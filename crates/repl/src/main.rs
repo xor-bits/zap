@@ -1,21 +1,10 @@
 use std::{
-    env::args,
     error::Error,
-    fs::read_to_string,
-    io::{stdin, stdout, Write},
-    thread::{self, Thread},
+    thread::{self},
     time::Duration,
 };
 
 use compiler::{Compiler, Str};
-// use interpreter::Interpreter;
-use bytecode::Runtime;
-use lexer::Lexer;
-use parser::{
-    ast::{Ast, Root},
-    ParseStream,
-};
-use typeck::Type;
 
 //
 
@@ -33,13 +22,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     compiler
         .run(
             "
-            a := 0;
-            b := 1;
-            for {
-                printi(a);
-                a, b = b, a + b;
-                wait();
+            fib := fn() {
+                a := 0;
+                b := 1;
+                for {
+                    printi(a);
+                    a, b = b, a + b;
+                    wait();
+                }
             }
+
+            fib();
         ",
         )
         .unwrap();

@@ -19,7 +19,7 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
 };
 use parser::ast::{Ast, BinaryOp, Root};
-use typeck::{FuncId, Function, LabelId, Literal, Statement, TmpId, Type, VarId};
+use typeck::{BlockId, FuncId, Function, LabelId, Literal, Statement, TmpId, Type, VarId};
 
 use self::types::{AsLlvm, AsLlvmConst};
 pub use self::types::{AsType, FnAsLlvm, Str};
@@ -151,7 +151,7 @@ impl IndexOf for FuncId {
     }
 }
 
-impl IndexOf for LabelId {
+impl IndexOf for BlockId {
     fn index(self) -> usize {
         self.0
     }
@@ -312,7 +312,7 @@ impl ModuleGen {
 
         let mut tmp_map: IdMap<TmpId, FuncOr<BasicValueEnum>> = IdMap::new();
         let mut var_map: IdMap<VarId, FuncOr<PointerValue>> = IdMap::new();
-        let mut label_map: IdMap<LabelId, BasicBlock> = IdMap::new();
+        let mut block_map: IdMap<BlockId, BasicBlock> = IdMap::new();
 
         for (i, func) in self.types.functions().iter().enumerate() {
             if func.is_extern {
@@ -321,160 +321,168 @@ impl ModuleGen {
 
             let func_val = *self.functions.get(FuncId(i));
 
-            let entry = self.ctx.append_basic_block(func_val, "entry");
+            let entry = self.ctx.append_basic_block(func_val, "allocas");
             self.alloca_builder.position_at_end(entry);
-
-            let post_alloca = self.ctx.append_basic_block(func_val, "post-alloca");
-            self.builder.position_at_end(post_alloca);
 
             tmp_map.clear();
             var_map.clear();
-            label_map.clear();
+            block_map.clear();
             tmp_map.reserve(func.temporaries.len());
             var_map.reserve(func.variables.len());
-            label_map.reserve(func.labels);
+            block_map.reserve(func.blocks.len());
 
-            for stmt in func.stmts.iter() {
-                match stmt {
-                    Statement::Let { dst, src } => match *tmp_map.get(*src) {
-                        FuncOr::T(val) => {
-                            let ty = val.get_type();
-                            let ptr = self
-                                .alloca_builder
-                                .build_alloca(ty, "fixme-keep-variable-name")
-                                .unwrap();
+            for (block_id, _) in func.blocks() {
+                let block = self.ctx.append_basic_block(
+                    func_val,
+                    if block_id.0 == 0 {
+                        "entry"
+                    } else {
+                        "fixme-keep-labels"
+                    },
+                );
+                block_map.set(block_id, block);
+            }
 
-                            var_map.set(*dst, FuncOr::T(ptr));
+            for (block_id, code_block) in func.blocks() {
+                self.builder.position_at_end(*block_map.get(block_id));
+
+                for stmt in code_block.stmts.iter() {
+                    match stmt {
+                        Statement::Let { dst, src } => match *tmp_map.get(*src) {
+                            FuncOr::T(val) => {
+                                let ty = val.get_type();
+                                let ptr = self
+                                    .alloca_builder
+                                    .build_alloca(ty, "fixme-keep-variable-name")
+                                    .unwrap();
+
+                                var_map.set(*dst, FuncOr::T(ptr));
+                                self.builder.build_store(ptr, val).unwrap();
+                            }
+                            FuncOr::FunctionValue(val) => {
+                                var_map.set(*dst, FuncOr::FunctionValue(val));
+                            }
+                        },
+                        Statement::Store { dst, src } => {
+                            let ptr = *var_map
+                                .get(*dst)
+                                .as_t()
+                                .expect("cannot mutate a function value");
+                            let val = *tmp_map
+                                .get(*src)
+                                .as_t()
+                                .expect("cannot mutate a function value");
                             self.builder.build_store(ptr, val).unwrap();
                         }
-                        FuncOr::FunctionValue(val) => {
-                            var_map.set(*dst, FuncOr::FunctionValue(val));
+                        Statement::Load { dst, src } => match var_map.get(*src) {
+                            FuncOr::T(ptr) => {
+                                let val = self
+                                    .builder
+                                    .build_load(
+                                        self.types.get_type(func.var(*src)).as_llvm(self).unwrap(),
+                                        *ptr,
+                                        "fixme-keep-variable-name",
+                                    )
+                                    .unwrap();
+
+                                tmp_map.set(*dst, FuncOr::T(val));
+                            }
+                            FuncOr::FunctionValue(f) => {
+                                tmp_map.set(*dst, FuncOr::FunctionValue(*f));
+                            }
+                        },
+                        Statement::Extern { dst, src, name } => {
+                            let func = *self.functions.get(*src);
+                            tmp_map.set(*dst, FuncOr::FunctionValue(func));
                         }
-                    },
-                    Statement::Store { dst, src } => {
-                        let ptr = *var_map
-                            .get(*dst)
-                            .as_t()
-                            .expect("cannot mutate a function value");
-                        let val = *tmp_map
-                            .get(*src)
-                            .as_t()
-                            .expect("cannot mutate a function value");
-                        self.builder.build_store(ptr, val).unwrap();
-                    }
-                    Statement::Load { dst, src } => match var_map.get(*src) {
-                        FuncOr::T(ptr) => {
+                        Statement::Func { dst, src } => {
+                            let func = *self.functions.get(*src);
+                            tmp_map.set(*dst, FuncOr::FunctionValue(func));
+                        }
+                        Statement::Const { dst, src } => {
+                            tmp_map.set(*dst, FuncOr::T(src.as_llvm_const(self).unwrap()));
+                        }
+                        Statement::BinExpr { dst, lhs, op, rhs } => {
+                            let lhs = *tmp_map
+                                .get(*lhs)
+                                .as_t()
+                                .expect("cannot operate on a function value");
+                            let rhs = *tmp_map
+                                .get(*rhs)
+                                .as_t()
+                                .expect("cannot operate on a function value");
+                            let ty = self.types.get_type(func.tmp(*dst));
+
+                            let res = match (ty, op) {
+                                (Type::I32, BinaryOp::Add) => self
+                                    .builder
+                                    .build_int_add(
+                                        lhs.into_int_value(),
+                                        rhs.into_int_value(),
+                                        "builtin-i32-add",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Mul) => self
+                                    .builder
+                                    .build_int_mul(
+                                        lhs.into_int_value(),
+                                        rhs.into_int_value(),
+                                        "builtin-i32-mul",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                _ => {
+                                    todo!("invalid operation: {ty:?} {}", op.as_str());
+                                }
+                            };
+
+                            tmp_map.set(*dst, FuncOr::T(res));
+                        }
+                        Statement::Call { dst, func, args } => {
+                            let tmp = tmp_map
+                                .get(*func)
+                                .as_function_value()
+                                .expect("cannot call a non function");
+
+                            let args: Box<[_]> = args
+                                .iter()
+                                .map(|arg| {
+                                    tmp_map
+                                        .get(*arg)
+                                        .as_t()
+                                        .expect("cannot use functions as arguments")
+                                        .as_basic_value_enum()
+                                        .into()
+                                })
+                                .collect();
+
                             let val = self
                                 .builder
-                                .build_load(
-                                    self.types.get_type(func.var(*src)).as_llvm(self).unwrap(),
-                                    *ptr,
-                                    "fixme-keep-variable-name",
-                                )
+                                .build_direct_call(*tmp, &args, "fixme-keep-function-names")
                                 .unwrap();
+
+                            let val = match val.try_as_basic_value().left() {
+                                Some(val) => val,
+                                None => context().struct_type(&[], false).const_zero().into(),
+                            };
 
                             tmp_map.set(*dst, FuncOr::T(val));
                         }
-                        FuncOr::FunctionValue(f) => {
-                            tmp_map.set(*dst, FuncOr::FunctionValue(*f));
+                        Statement::Return { src } => todo!(),
+                        Statement::ReturnVoid => {
+                            self.builder.build_return(None).unwrap();
                         }
-                    },
-                    Statement::Extern { dst, src, name } => {
-                        let func = *self.functions.get(*src);
-                        tmp_map.set(*dst, FuncOr::FunctionValue(func));
-                    }
-                    Statement::Func { dst, src } => {
-                        let func = *self.functions.get(*src);
-                        tmp_map.set(*dst, FuncOr::FunctionValue(func));
-                    }
-                    Statement::Const { dst, src } => {
-                        tmp_map.set(*dst, FuncOr::T(src.as_llvm_const(self).unwrap()));
-                    }
-                    Statement::BinExpr { dst, lhs, op, rhs } => {
-                        let lhs = *tmp_map
-                            .get(*lhs)
-                            .as_t()
-                            .expect("cannot operate on a function value");
-                        let rhs = *tmp_map
-                            .get(*rhs)
-                            .as_t()
-                            .expect("cannot operate on a function value");
-                        let ty = self.types.get_type(func.tmp(*dst));
-
-                        let res = match (ty, op) {
-                            (Type::I32, BinaryOp::Add) => self
-                                .builder
-                                .build_int_add(
-                                    lhs.into_int_value(),
-                                    rhs.into_int_value(),
-                                    "builtin-i32-add",
-                                )
-                                .unwrap()
-                                .as_basic_value_enum(),
-                            (Type::I32, BinaryOp::Mul) => self
-                                .builder
-                                .build_int_mul(
-                                    lhs.into_int_value(),
-                                    rhs.into_int_value(),
-                                    "builtin-i32-mul",
-                                )
-                                .unwrap()
-                                .as_basic_value_enum(),
-                            _ => {
-                                todo!("invalid operation: {ty:?} {}", op.as_str());
-                            }
-                        };
-
-                        tmp_map.set(*dst, FuncOr::T(res));
-                    }
-                    Statement::Call { dst, func, args } => {
-                        let tmp = tmp_map
-                            .get(*func)
-                            .as_function_value()
-                            .expect("cannot call a non function");
-
-                        let args: Box<[_]> = args
-                            .iter()
-                            .map(|arg| {
-                                tmp_map
-                                    .get(*arg)
-                                    .as_t()
-                                    .expect("cannot use functions as arguments")
-                                    .as_basic_value_enum()
-                                    .into()
-                            })
-                            .collect();
-
-                        let val = self
-                            .builder
-                            .build_direct_call(*tmp, &args, "fixme-keep-function-names")
-                            .unwrap();
-
-                        let val = match val.try_as_basic_value().left() {
-                            Some(val) => val,
-                            None => context().struct_type(&[], false).const_zero().into(),
-                        };
-
-                        tmp_map.set(*dst, FuncOr::T(val));
-                    }
-                    Statement::Return { src } => todo!(),
-                    Statement::Label { id } => {
-                        let block = self.ctx.append_basic_block(func_val, "fixme-keep-labels");
-                        label_map.set(*id, block);
-
-                        self.builder.build_unconditional_branch(block).unwrap();
-                        self.builder.position_at_end(block);
-                    }
-
-                    Statement::UnconditionalJump { id } => {
-                        let block = *label_map.get(*id);
-                        self.builder.build_unconditional_branch(block).unwrap();
-                    }
-                }
-            }
+                        Statement::UnconditionalJump { id } => {
+                            let block = *block_map.get(*id);
+                            self.builder.build_unconditional_branch(block).unwrap();
+                        }
+                    } // match
+                } // for
+            } // for
 
             self.alloca_builder
-                .build_unconditional_branch(post_alloca)
+                .build_unconditional_branch(*block_map.get(BlockId(0)))
                 .unwrap();
             // self.builder.build_return(None).unwrap();
 
