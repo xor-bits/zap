@@ -253,7 +253,7 @@ impl Parse for Block {
                 _ = tokens.next_token()?;
             }
 
-            if !has_semi {
+            /* if !has_semi {
                 // no semi == it is the last statement and an implicit return
 
                 let r_brace = tokens.next_token()?;
@@ -268,7 +268,7 @@ impl Parse for Block {
                     auto_return: true,
                     close: RBrace,
                 });
-            }
+            } */
         }
         let close = tokens.parse()?;
 

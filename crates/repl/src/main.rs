@@ -22,22 +22,41 @@ fn main() -> Result<(), Box<dyn Error>> {
     compiler
         .run(
             "
-            fib := fn() {
-                prints(\"Fibonacci series:\");
-                a := 0;
-                b := 1;
-                for {
-                    printi(a);
-                    a, b = b, a + b;
-                    wait();
+            // fib := fn() {
+            //     prints(\"Fibonacci series:\");
+            //     a := 0;
+            //     b := 1;
+            //     for {
+            //         printi(a);
+            //         a, b = b, a + b;
+            //         wait();
 
-                    // if a >= 1000 {
-                    //     return;
-                    // }
+            //         if a >= 100 {
+            //             return;
+            //         }
+            //     }
+            // }
+
+            fizzbuzz := fn() {
+                i := 1;
+                for {
+                    if ((i % 3) == 0) && ((i % 5) == 0) {
+                        prints(\"FizzBuzz\");
+                    } else if (i % 3) == 0 {
+                        prints(\"Fizz\");
+                    } else if (i % 5) == 0 {
+                        prints(\"Buzz\");
+                    } else {
+                        printi(i);
+                    }
+
+                    wait();
+                    i = i + 1;
                 }
             }
 
-            fib();
+            fizzbuzz();
+            // fib();
         ",
         )
         .unwrap();

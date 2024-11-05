@@ -171,6 +171,16 @@ impl Module {
                         Statement::UnconditionalJump { id } => {
                             print!("     - jump {}", id.0);
                         }
+                        Statement::ConditionalJump {
+                            bool,
+                            then_block,
+                            else_block,
+                        } => {
+                            print!(
+                                "     - if %{} then jump {} else jump {}",
+                                bool.0, then_block.0, else_block.0
+                            );
+                        }
                     }
 
                     println!();
@@ -293,7 +303,20 @@ impl Process for Expr {
             AnyExpr::Binary { op, sides } => {
                 let lhs = sides.0.process(module, function)?;
                 let rhs = sides.1.process(module, function)?;
-                let dst = function.new_tmpid(function.temporaries[lhs.0]);
+
+                let ty = match op {
+                    BinaryOp::Lt
+                    | BinaryOp::Le
+                    | BinaryOp::Gt
+                    | BinaryOp::Ge
+                    | BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::And
+                    | BinaryOp::Or => module.types.create_known(Type::Bool),
+                    _ => function.temporaries[lhs.0],
+                };
+
+                let dst = function.new_tmpid(ty);
                 let op = *op;
 
                 function.push_stmt(Statement::BinExpr { dst, lhs, op, rhs });
@@ -456,8 +479,49 @@ impl Process for Set {
 impl Process for Cond {
     type Return = ();
 
-    fn process(&self, _module: &mut Module, _function: &mut Function) -> Result<Self::Return> {
-        todo!()
+    fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
+        // if a {} else if b {} else if c {} else {}
+        // becomes
+        // if a {} else { if b {} else { if c {} else {} } }
+
+        let continue_block = function.push_block();
+
+        // if/else if chain
+        for i in [&self.if_first]
+            .into_iter()
+            .chain(self.else_ifs.iter().map(|s| &s.inner))
+        {
+            let then_block = function.push_block();
+            let else_block = function.push_block();
+
+            // TODO: check the type and narrow down the LinkedType
+            let bool = i.check.process(module, function)?;
+
+            function.push_stmt(Statement::ConditionalJump {
+                bool,
+                then_block,
+                else_block,
+            });
+
+            // if true block
+            function.move_to_block(then_block);
+            i.block.process(module, function)?;
+            function.terminate_with(Statement::UnconditionalJump { id: continue_block });
+
+            // if false block
+            function.move_to_block(else_block);
+        }
+
+        // final else block
+        if let Some(else_last) = self.else_last.as_ref() {
+            else_last.block.process(module, function)?;
+        }
+        function.terminate_with(Statement::UnconditionalJump { id: continue_block });
+
+        // continue block
+        function.move_to_block(continue_block);
+
+        Ok(())
     }
 }
 
@@ -483,13 +547,12 @@ impl Process for Return {
     type Return = ();
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        let src = if let Some(expr) = self.expr.as_ref() {
-            expr.process(module, function)?
+        if let Some(expr) = self.expr.as_ref() {
+            let src = expr.process(module, function)?;
+            function.push_stmt(Statement::Return { src });
         } else {
-            function.new_tmpid(module.types.create_known(Type::Void))
+            function.push_stmt(Statement::ReturnVoid);
         };
-
-        function.push_stmt(Statement::Return { src });
 
         Ok(())
     }
@@ -574,12 +637,16 @@ impl Function {
     }
 
     pub fn terminate(&mut self) {
+        self.terminate_with(Statement::ReturnVoid);
+    }
+
+    pub fn terminate_with(&mut self, terminal_stmt: Statement) {
         // println!("current: {:?}", self.current());
         if self.current().map_or(false, |stmt| stmt.is_terminal()) {
             return;
         }
 
-        self.push_stmt(Statement::ReturnVoid);
+        self.push_stmt(terminal_stmt);
     }
 
     pub fn blocks(&self) -> impl DoubleEndedIterator<Item = (BlockId, &Block)> + ExactSizeIterator {
@@ -655,13 +722,21 @@ pub enum Statement {
     UnconditionalJump {
         id: BlockId,
     },
+    ConditionalJump {
+        bool: TmpId,
+        then_block: BlockId,
+        else_block: BlockId,
+    },
 }
 
 impl Statement {
     pub const fn is_terminal(&self) -> bool {
         matches!(
             self,
-            Statement::Return { .. } | Statement::ReturnVoid | Statement::UnconditionalJump { .. }
+            Statement::Return { .. }
+                | Statement::ReturnVoid
+                | Statement::UnconditionalJump { .. }
+                | Statement::ConditionalJump { .. }
         )
     }
 }

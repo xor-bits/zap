@@ -342,32 +342,137 @@ impl ModuleGen {
                             tmp_map.set(*dst, FuncOr::T(src.as_llvm_const(self).unwrap()));
                         }
                         Statement::BinExpr { dst, lhs, op, rhs } => {
-                            let lhs = *tmp_map
+                            let lhs_val = *tmp_map
                                 .get(*lhs)
                                 .as_t()
                                 .expect("cannot operate on a function value");
-                            let rhs = *tmp_map
+                            let rhs_val = *tmp_map
                                 .get(*rhs)
                                 .as_t()
                                 .expect("cannot operate on a function value");
-                            let ty = self.types.get_type(func.tmp(*dst));
+                            let ty = self.types.get_type(func.tmp(*lhs));
 
                             let res = match (ty, op) {
                                 (Type::I32, BinaryOp::Add) => self
                                     .builder
                                     .build_int_add(
-                                        lhs.into_int_value(),
-                                        rhs.into_int_value(),
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
                                         "builtin-i32-add",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Sub) => self
+                                    .builder
+                                    .build_int_sub(
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-sub",
                                     )
                                     .unwrap()
                                     .as_basic_value_enum(),
                                 (Type::I32, BinaryOp::Mul) => self
                                     .builder
                                     .build_int_mul(
-                                        lhs.into_int_value(),
-                                        rhs.into_int_value(),
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
                                         "builtin-i32-mul",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Div) => self
+                                    .builder
+                                    .build_int_signed_div(
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-div",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Rem) => self
+                                    .builder
+                                    .build_int_signed_rem(
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-rem",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Ge) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::SGE,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-ge",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Le) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::SLE,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-le",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Gt) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::SLT,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-gt",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Lt) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::SLT,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-lt",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Eq) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::EQ,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-eq",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::I32, BinaryOp::Neq) => self
+                                    .builder
+                                    .build_int_compare(
+                                        inkwell::IntPredicate::NE,
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-i32-eq",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::Bool, BinaryOp::And) => self
+                                    .builder
+                                    .build_and(
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-bool-and",
+                                    )
+                                    .unwrap()
+                                    .as_basic_value_enum(),
+                                (Type::Bool, BinaryOp::Or) => self
+                                    .builder
+                                    .build_or(
+                                        lhs_val.into_int_value(),
+                                        rhs_val.into_int_value(),
+                                        "builtin-bool-or",
                                     )
                                     .unwrap()
                                     .as_basic_value_enum(),
@@ -415,6 +520,22 @@ impl ModuleGen {
                         Statement::UnconditionalJump { id } => {
                             let block = *block_map.get(*id);
                             self.builder.build_unconditional_branch(block).unwrap();
+                        }
+                        Statement::ConditionalJump {
+                            bool,
+                            then_block,
+                            else_block,
+                        } => {
+                            let bool = tmp_map
+                                .get(*bool)
+                                .as_t()
+                                .expect("cannot use functions as values")
+                                .into_int_value();
+                            let then_block = *block_map.get(*then_block);
+                            let else_block = *block_map.get(*else_block);
+                            self.builder
+                                .build_conditional_branch(bool, then_block, else_block)
+                                .unwrap();
                         }
                     } // match
                 } // for

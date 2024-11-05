@@ -143,6 +143,11 @@ impl Compiler {
     }
 
     pub fn run(&mut self, code: &str) -> Result<i32> {
+        // let mut parser = parser::ParseStream::from_lexer(Lexer::new(code));
+        // for tok in parser.flatten() {
+        //     println!("{:?}", tok.token());
+        // }
+
         let mut parser = parser::ParseStream::from_lexer(Lexer::new(code));
         let ast: Ast<Root> = parser.parse()?;
 
@@ -157,8 +162,7 @@ impl Compiler {
 
         // let res = module.run()?;
 
-        todo!()
-        // Ok(res)
+        Ok(0)
     }
 }
 

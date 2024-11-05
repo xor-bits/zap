@@ -300,6 +300,10 @@ impl<'a> SpannedToken<'a> {
         self.span.span()
     }
 
+    pub fn source(&self) -> &'a str {
+        self.span.source()
+    }
+
     pub fn as_str(&self) -> &'a str {
         self.span.as_str()
     }
@@ -335,6 +339,10 @@ impl<'a> Span<'a> {
 
     pub fn span(&self) -> Range<usize> {
         self.from..self.to
+    }
+
+    pub fn source(&self) -> &'a str {
+        self.source
     }
 
     pub fn as_str(&self) -> &'a str {

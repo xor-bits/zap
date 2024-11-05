@@ -365,6 +365,8 @@ impl<T: Parse + SingleToken> Parse for Option<T> {
 
 //
 
+// pub fn
+
 pub fn unexpected(token: SpannedToken, arr: &[Token], dots: bool) -> Error {
     use std::fmt::Write;
 
@@ -379,6 +381,16 @@ pub fn unexpected(token: SpannedToken, arr: &[Token], dots: bool) -> Error {
     //     });
 
     let mut output = String::new();
+
+    println!("span: {:?}", token.span());
+
+    let mut n = 0usize;
+    for (i, line) in token.source().split_inclusive('\n').enumerate() {
+        if (n..n + line.len()).contains(&token.span().start) {
+            println!("line: {i}: {}", line.trim_end());
+        }
+        n += line.len();
+    }
 
     write!(&mut output, "`{token}`, expected ").unwrap();
 
