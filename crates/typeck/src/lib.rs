@@ -671,12 +671,10 @@ pub enum Statement {
 
 impl Statement {
     pub const fn is_terminal(&self) -> bool {
-        match self {
-            Statement::Return { .. }
-            | Statement::ReturnVoid
-            | Statement::UnconditionalJump { .. } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Statement::Return { .. } | Statement::ReturnVoid | Statement::UnconditionalJump { .. }
+        )
     }
 }
 

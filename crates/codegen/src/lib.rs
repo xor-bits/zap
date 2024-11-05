@@ -55,62 +55,7 @@ fn context() -> &'static Context {
     CTX.with(|c| *c)
 }
 
-/* fn to_llvm_fn_type<'a>(
-    ctx: &'a Context,
-    ty: &Type,
-    param_types: &[BasicMetadataTypeEnum<'a>],
-) -> FunctionType<'a> {
-    match ty {
-        Type::Func(_) => todo!(),
-        Type::Bool => ctx.bool_type().fn_type(param_types, false),
-        Type::I32 => ctx.i32_type().fn_type(param_types, false),
-        Type::Str => todo!(),
-        Type::Never => todo!(),
-        Type::Void => ctx.void_type().fn_type(param_types, false),
-        Type::Unknown => todo!(),
-    }
-}
-
-fn to_llvm_metadata_type<'a>(ctx: &'a Context, ty: &Type) -> BasicMetadataTypeEnum<'a> {
-    match ty {
-        Type::Func(_) => todo!(),
-        Type::Bool => ctx.bool_type().into(),
-        Type::I32 => ctx.bool_type().into(),
-        Type::Str => todo!(),
-        Type::Never => todo!(),
-        Type::Void => todo!(),
-        Type::Unknown => todo!(),
-    }
-}
-
-fn to_llvm_basic_type<'a>(ctx: &'a Context, ty: &Type) -> BasicTypeEnum<'a> {
-    match ty {
-        Type::Func(_) => ctx.struct_type(&[], false).into(),
-        Type::Bool => ctx.bool_type().into(),
-        Type::I32 => ctx.i32_type().into(),
-        Type::Str => todo!(),
-        Type::Never => todo!(),
-        Type::Void => todo!(),
-        Type::Unknown => todo!(),
-    }
-}
-
-fn to_const<'a>(ctx: &'a Context, lit: &Literal) -> BasicValueEnum<'a> {
-    match lit {
-        typeck::Literal::Bool(v) => ctx
-            .bool_type()
-            .const_int(if *v { 1 } else { 0 }, false)
-            .into(),
-        typeck::Literal::I32(i) => ctx.i32_type().const_int(*i as u64, false).into(),
-        typeck::Literal::Str(_) => todo!(),
-    }
-} */
-
-fn to_prototype<'a>(
-    gen: &ModuleGen,
-    code: &typeck::Module,
-    func: &Function,
-) -> FunctionType<'static> {
+fn to_prototype(gen: &ModuleGen, code: &typeck::Module, func: &Function) -> FunctionType<'static> {
     let param_types: Box<[_]> = func
         .params
         .iter()

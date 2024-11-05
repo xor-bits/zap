@@ -148,7 +148,7 @@ impl AsLlvmConst for Literal {
         match self {
             Literal::Bool(v) => Some(gen.ctx.bool_type().const_int(*v as u64, false).into()),
             Literal::I32(v) => Some(gen.ctx.i32_type().const_int(*v as u64, false).into()),
-            Literal::Str(v) => Some(Str::get_const(gen, &v).into()),
+            Literal::Str(v) => Some(Str::get_const(gen, v).into()),
         }
     }
 }
