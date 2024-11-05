@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     thread::{self},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use compiler::{Compiler, Str};
@@ -13,7 +13,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut compiler = Compiler::new();
     // let mut compiler = Runtime::new();
 
+    let mut rng = BadRng::init();
+
     // compiler.add_extern("printi", Type::Void, &[Type::Str]);
+    compiler.add("rand", || rng.next()).unwrap();
     compiler.add("printi", |i: i32| println!("{i}")).unwrap();
     compiler.add("prints", |s: Str| println!("{s}")).unwrap();
     compiler
@@ -21,23 +24,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
     compiler
         .run(
-            "
-            // fib := fn() {
-            //     prints(\"Fibonacci series:\");
-            //     a := 0;
-            //     b := 1;
-            //     for {
-            //         printi(a);
-            //         a, b = b, a + b;
-            //         wait();
+            "            
+            fib := fn() {
+                prints(\"Fibonacci sequence:\");
+                a := 0;
+                b := 1;
+                for {
+                    printi(a);
+                    a, b = b, a + b;
+                    wait();
 
-            //         if a >= 100 {
-            //             return;
-            //         }
-            //     }
-            // }
+                    if a >= 100 {
+                        return;
+                    }
+                }
+            }
 
             fizzbuzz := fn() {
+                prints(\"FizzBuzz:\");
                 i := 1;
                 for {
                     if ((i % 3) == 0) && ((i % 5) == 0) {
@@ -55,8 +59,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            fizzbuzz();
-            // fib();
+            print_randoms := fn() {
+                prints(\"Random numbers:\");
+                i := 20;
+                for {
+                    if i == 0 {
+                        return;
+                    }
+                    printi(rand());
+                    i = i - 1;
+                }
+            }
+
+            v := rand() % 3;
+            if v == 0 {
+                fizzbuzz();
+            } else if v == 1 {
+                fib();
+            } else {
+                print_randoms();
+            }
         ",
         )
         .unwrap();
@@ -114,4 +136,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     // }
 
     Ok(()) */
+}
+
+//
+
+/// xor shift rng seeded with subsec nanos elapsed from init to first use
+struct BadRng {
+    init: Instant,
+    state: Option<i32>,
+}
+
+impl BadRng {
+    fn init() -> Self {
+        Self {
+            init: Instant::now(),
+            state: None,
+        }
+    }
+
+    fn next(&mut self) -> i32 {
+        let state = self
+            .state
+            .get_or_insert_with(|| self.init.elapsed().subsec_nanos() as i32);
+        let mut x = *state;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        *state = x;
+        x
+    }
 }

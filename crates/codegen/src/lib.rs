@@ -692,8 +692,8 @@ impl ModuleGen {
     }
 
     pub fn run(&mut self, main: FuncId) {
-        eprintln!("LLVM IR:\n");
-        self.module.print_to_stderr();
+        // eprintln!("LLVM IR:\n");
+        // self.module.print_to_stderr();
         // panic!();
 
         self.module.verify().unwrap();
