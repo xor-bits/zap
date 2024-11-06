@@ -1,6 +1,9 @@
 #[cfg(test)]
 use serde::Serialize;
-use std::{fmt, ops::Range};
+use std::{
+    fmt::{self, Write},
+    ops::Range,
+};
 
 //
 
@@ -45,6 +48,120 @@ impl fmt::Display for Error {
             Error::UnexpectedEoi => f.write_str("unexpected end of input"),
             Error::ExtraTokens => f.write_str("found extra tokens"),
         }
+    }
+}
+
+//
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpanMessage<'a, M> {
+    span: Span,
+    source: &'a str,
+    message: M,
+}
+
+impl<'a, M> SpanMessage<'a, M> {
+    pub const fn new(span: Span, source: &'a str, message: M) -> Self {
+        Self {
+            span,
+            source,
+            message,
+        }
+    }
+}
+
+impl<M: fmt::Display> fmt::Display for SpanMessage<'_, M> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let Self {
+            span,
+            source,
+            message,
+        } = self;
+
+        let mut line_start = 0usize;
+        let mut line = None;
+
+        for (i, l) in source.split_inclusive('\n').enumerate() {
+            if (line_start..line_start + l.len()).contains(&span.from) {
+                line = Some((l, i));
+                break;
+            }
+            line_start += l.len();
+        }
+
+        let (line, line_index) = line.expect("error is not in source");
+
+        let line_index_len = line_index.ilog10() as usize + 1;
+        let column_index = span.from - line_start;
+        let span_width = span.to - span.from;
+
+        writeln!(f, "<source>:{line_index}:{column_index}")?;
+        writeln!(f, "{:1$}|", " ", 2 + line_index_len)?;
+        writeln!(f, " {line_index} | {}", line.trim_end())?;
+        writeln!(
+            f,
+            "{w:0$}| {w:1$}{arrow:2$} {message}",
+            2 + line_index_len,
+            column_index,
+            span_width,
+            w = " ",
+            arrow = "^",
+        )?;
+
+        Ok(())
+    }
+}
+
+//
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unexpected<'a, I> {
+    what: &'a str,
+    got: I,
+    expected: Box<[I]>,
+    dots: bool,
+}
+
+impl<'a, I> Unexpected<'a, I> {
+    pub const fn new(what: &'a str, got: I, expected: Box<[I]>, dots: bool) -> Self {
+        Self {
+            what,
+            got,
+            expected,
+            dots,
+        }
+    }
+}
+
+impl<I: fmt::Display> fmt::Display for Unexpected<'_, I> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let Self {
+            what,
+            got,
+            expected,
+            dots,
+        } = self;
+
+        write!(f, "unexpected {what} `{got}`, expected ")?;
+
+        match expected.as_ref() {
+            [] => write!(f, "nothing")?,
+            [only] => write!(f, "`{only}`")?,
+            [slice @ .., last] => {
+                write!(f, "one of `")?;
+                for token in slice {
+                    write!(f, "{token}, ")?;
+                }
+                write!(f, "{last}")?;
+
+                if *dots {
+                    write!(f, ", ...")?;
+                }
+                write!(f, "`")?;
+            }
+        }
+
+        Ok(())
     }
 }
 

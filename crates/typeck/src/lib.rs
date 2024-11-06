@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use lexer::Span;
+use lexer::{Span, Unexpected};
 use parser::ast::{
     self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Init, Loop, Return, Root, Set, Stmt, Test,
 };
@@ -18,8 +18,7 @@ pub enum Error {
     InvalidType,
     UnexpectedType {
         span: Span,
-        expected: LinkedType,
-        got: LinkedType,
+        err: Unexpected<'static, String>,
     },
 }
 
@@ -425,10 +424,11 @@ impl Process for Call {
             let param_ty = module.types.type_links[param_lty.0];
 
             if arg_ty != param_ty {
+                let got = format!("{arg_ty:?}");
+                let expected = [format!("{param_ty:?}")].into();
                 return Err(Error::UnexpectedType {
                     span,
-                    expected: param_lty,
-                    got: arg_lty,
+                    err: Unexpected::new("type", got, expected, false),
                 });
             }
         }

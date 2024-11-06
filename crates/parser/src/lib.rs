@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt, iter::Filter};
 
-use lexer::{Lexer, Span, SpannedToken, Token};
+use lexer::{Lexer, Span, SpannedToken, Token, Unexpected};
 
 #[cfg(test)]
 use serde::Serialize;
@@ -16,7 +16,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Lexer(lexer::Error),
-    UnexpectedToken(String),
+    UnexpectedToken(lexer::Unexpected<'static, Token>),
 }
 
 impl std::error::Error for Error {
@@ -33,7 +33,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Lexer(err) => fmt::Display::fmt(err, f),
-            Error::UnexpectedToken(tok) => write!(f, "unexpected token {tok}"),
+            Error::UnexpectedToken(err) => fmt::Display::fmt(err, f),
         }
     }
 }
@@ -373,52 +373,8 @@ impl<T: Parse + SingleToken> Parse for Option<T> {
 
 //
 
-// pub fn
-
 pub fn unexpected(token: SpannedToken, arr: &[Token], dots: bool) -> Error {
-    use std::fmt::Write;
-
-    // let unexpected = unexpected
-    //     .token()
-    //     .as_token_str()
-    //     .map(str::to_string)
-    //     .unwrap_or_else(|| {
-    //         let mut s = format!("{unexpected:?}");
-    //         s.make_ascii_lowercase();
-    //         s
-    //     });
-
-    let mut output = String::new();
-
-    // println!("span: {:?}", token.span());
-    // let mut n = 0usize;
-    // for (i, line) in token.source().split_inclusive('\n').enumerate() {
-    //     if (n..n + line.len()).contains(&token.span().start) {
-    //         println!("line: {i}: {}", line.trim_end());
-    //     }
-    //     n += line.len();
-    // }
-
-    // write!(&mut output, "`{token}`, expected ").unwrap();
-
-    // match arr {
-    //     [] => panic!("expected nothing"),
-    //     [only] => write!(&mut output, "`{only}`").unwrap(),
-    //     [slice @ .., last] => {
-    //         output.push_str("one of `");
-    //         for token in slice {
-    //             write!(&mut output, "{token}, ").unwrap();
-    //         }
-    //         write!(&mut output, "{last}").unwrap();
-
-    //         if dots {
-    //             output.push_str(", ...");
-    //         }
-    //         output.push('`');
-    //     }
-    // }
-
-    Error::UnexpectedToken(output)
+    Error::UnexpectedToken(Unexpected::new("token", token.token(), arr.into(), dots))
 }
 
 //

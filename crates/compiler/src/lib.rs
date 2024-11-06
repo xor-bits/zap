@@ -155,7 +155,11 @@ impl Compiler {
 
         // TODO: type checking before code gen
 
-        let main = module.add(&ast)?;
+        let main = module.add(&ast).inspect_err(|e| {
+            if let codegen::Error::Type(typeck::Error::UnexpectedType { span, err }) = e {
+                println!("{}", lexer::SpanMessage::new(*span, code, err));
+            }
+        })?;
         module.run(main);
 
         // .expect("code generation should not fail");
