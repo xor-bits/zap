@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt, iter::Filter};
 
-use lexer::{Lexer, SpannedToken, Token};
+use lexer::{Lexer, Span, SpannedToken, Token};
 
 #[cfg(test)]
 use serde::Serialize;
@@ -143,22 +143,32 @@ fn skip_comments(token: &lexer::Result<SpannedToken>) -> bool {
 pub enum ParseStream<'a> {
     Lexer {
         lexer: Filter<Lexer<'a>, fn(&lexer::Result<SpannedToken>) -> bool>,
-        peek: VecDeque<SpannedToken<'a>>,
+        peek: VecDeque<SpannedToken>,
+        source: &'a str,
     },
     Buffer {
-        buffer: &'a [SpannedToken<'a>],
+        buffer: &'a [SpannedToken],
+        source: &'a str,
     },
 }
 
 impl<'a> ParseStream<'a> {
-    const EOI: SpannedToken<'static> = SpannedToken::from_whole_str(Token::Eoi, "");
+    const EOI: SpannedToken = SpannedToken::empty(Token::Eoi);
 
-    pub const fn new(buffer: &'a [SpannedToken<'a>]) -> Self {
-        Self::Buffer { buffer }
+    pub const fn new(buffer: &'a [SpannedToken], source: &'a str) -> Self {
+        Self::Buffer { buffer, source }
+    }
+
+    pub const fn source(&self) -> &'a str {
+        match self {
+            ParseStream::Lexer { source, .. } => source,
+            ParseStream::Buffer { source, .. } => source,
+        }
     }
 
     pub fn from_lexer(lexer: Lexer<'a>) -> Self {
         Self::Lexer {
+            source: lexer.source(),
             lexer: lexer.filter(skip_comments as _),
             peek: VecDeque::new(),
         }
@@ -188,14 +198,11 @@ impl<'a> ParseStream<'a> {
         Some(token) == self.top1().map(|tok| tok.token())
     }
 
-    pub fn next_token(&mut self) -> Result<SpannedToken<'a>> {
-        Ok(self
-            .next()
-            .transpose()?
-            .unwrap_or_else(|| SpannedToken::from_whole_str(Token::Eoi, "")))
+    pub fn next_token(&mut self) -> Result<SpannedToken> {
+        Ok(self.next().transpose()?.unwrap_or(Self::EOI))
     }
 
-    pub fn expect_next(&mut self, token: Token) -> Result<SpannedToken<'a>> {
+    pub fn expect_next(&mut self, token: Token) -> Result<SpannedToken> {
         let tok = self.next_token()?;
         if tok.token() == token {
             Ok(tok)
@@ -204,9 +211,9 @@ impl<'a> ParseStream<'a> {
         }
     }
 
-    fn top1(&mut self) -> Option<&'_ SpannedToken<'a>> {
+    fn top1(&mut self) -> Option<&'_ SpannedToken> {
         match self {
-            ParseStream::Lexer { lexer, peek } => {
+            ParseStream::Lexer { lexer, peek, .. } => {
                 if peek.is_empty() {
                     let next = lexer.next()?.unwrap_or(Self::EOI);
                     peek.push_back(next);
@@ -214,13 +221,13 @@ impl<'a> ParseStream<'a> {
 
                 peek.front()
             }
-            ParseStream::Buffer { buffer } => buffer.first(),
+            ParseStream::Buffer { buffer, .. } => buffer.first(),
         }
     }
 
-    fn top2(&mut self) -> Option<&'_ SpannedToken<'a>> {
+    fn top2(&mut self) -> Option<&'_ SpannedToken> {
         match self {
-            ParseStream::Lexer { lexer, peek } => {
+            ParseStream::Lexer { lexer, peek, .. } => {
                 if peek.len() < 2 {
                     let next = lexer.next()?.unwrap_or(Self::EOI);
                     peek.push_back(next);
@@ -233,7 +240,7 @@ impl<'a> ParseStream<'a> {
 
                 peek.get(1)
             }
-            ParseStream::Buffer { buffer } => buffer.first(),
+            ParseStream::Buffer { buffer, .. } => buffer.first(),
         }
     }
 
@@ -258,11 +265,11 @@ impl<'a> ParseStream<'a> {
 }
 
 impl<'a> Iterator for ParseStream<'a> {
-    type Item = Result<SpannedToken<'a>>;
+    type Item = Result<SpannedToken>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ParseStream::Lexer { lexer, peek } => {
+            ParseStream::Lexer { lexer, peek, .. } => {
                 if let Some(next) = peek.remove(0) {
                     return Some(Ok(next));
                 }
@@ -270,7 +277,7 @@ impl<'a> Iterator for ParseStream<'a> {
                 let res = lexer.next()?;
                 Some(res.map_err(Error::Lexer))
             }
-            ParseStream::Buffer { buffer } => {
+            ParseStream::Buffer { buffer, .. } => {
                 let (first, others) = buffer.split_first()?;
                 *buffer = others;
                 Some(Ok(*first))
@@ -281,15 +288,15 @@ impl<'a> Iterator for ParseStream<'a> {
 
 //
 
-pub struct Look<'a> {
-    token: SpannedToken<'a>,
+pub struct Look {
+    token: SpannedToken,
 
     // expected one of: (overflow: ...)
     arr: [Token; 8],
     len: u8,
 }
 
-impl<'a> Look<'a> {
+impl Look {
     pub fn peek(&mut self, expected: Token) -> bool {
         if self.token.token() == expected {
             return true;
@@ -315,7 +322,10 @@ impl<'a> Look<'a> {
 
 pub trait SingleToken: Sized {
     const TOKEN: Token;
-    const SELF: Self;
+
+    fn new(span: Span) -> Self;
+
+    fn span(&self) -> Span;
 
     fn parse_single(tokens: &mut ParseStream) -> Result<Self> {
         let tok = tokens.next_token()?;
@@ -323,7 +333,7 @@ pub trait SingleToken: Sized {
             return Err(unexpected(tok, &[Self::TOKEN], false));
         }
 
-        Ok(Self::SELF)
+        Ok(Self::new(tok.span()))
     }
 }
 
@@ -342,9 +352,7 @@ impl<T: Parse> Parse for Box<T> {
 impl<T: Parse + SingleToken> Parse for Option<T> {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         if tokens.peek1(T::TOKEN) {
-            _ = tokens.next();
-
-            Ok(Some(T::SELF))
+            Ok(Some(T::parse_single(tokens)?))
         } else {
             Ok(None)
         }
@@ -382,34 +390,33 @@ pub fn unexpected(token: SpannedToken, arr: &[Token], dots: bool) -> Error {
 
     let mut output = String::new();
 
-    println!("span: {:?}", token.span());
+    // println!("span: {:?}", token.span());
+    // let mut n = 0usize;
+    // for (i, line) in token.source().split_inclusive('\n').enumerate() {
+    //     if (n..n + line.len()).contains(&token.span().start) {
+    //         println!("line: {i}: {}", line.trim_end());
+    //     }
+    //     n += line.len();
+    // }
 
-    let mut n = 0usize;
-    for (i, line) in token.source().split_inclusive('\n').enumerate() {
-        if (n..n + line.len()).contains(&token.span().start) {
-            println!("line: {i}: {}", line.trim_end());
-        }
-        n += line.len();
-    }
+    // write!(&mut output, "`{token}`, expected ").unwrap();
 
-    write!(&mut output, "`{token}`, expected ").unwrap();
+    // match arr {
+    //     [] => panic!("expected nothing"),
+    //     [only] => write!(&mut output, "`{only}`").unwrap(),
+    //     [slice @ .., last] => {
+    //         output.push_str("one of `");
+    //         for token in slice {
+    //             write!(&mut output, "{token}, ").unwrap();
+    //         }
+    //         write!(&mut output, "{last}").unwrap();
 
-    match arr {
-        [] => panic!("expected nothing"),
-        [only] => write!(&mut output, "`{only}`").unwrap(),
-        [slice @ .., last] => {
-            output.push_str("one of `");
-            for token in slice {
-                write!(&mut output, "{token}, ").unwrap();
-            }
-            write!(&mut output, "{last}").unwrap();
-
-            if dots {
-                output.push_str(", ...");
-            }
-            output.push('`');
-        }
-    }
+    //         if dots {
+    //             output.push_str(", ...");
+    //         }
+    //         output.push('`');
+    //     }
+    // }
 
     Error::UnexpectedToken(output)
 }

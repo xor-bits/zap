@@ -267,6 +267,7 @@ dependencies = [
 name = "typeck"
 version = "0.1.0"
 dependencies = [
+ "lexer",
  "parser",
 ]
 

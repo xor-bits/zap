@@ -32,6 +32,7 @@ pub enum Error {
     InvalidMainFn,
     StaticRedefined(String),
     VariableNotFound(String),
+    Type(typeck::Error),
 }
 
 impl fmt::Display for Error {
@@ -41,7 +42,14 @@ impl fmt::Display for Error {
             Error::InvalidMainFn => write!(f, "invalid main function signature"),
             Error::StaticRedefined(name) => write!(f, "static `{name}` already defined"),
             Error::VariableNotFound(name) => write!(f, "variable `{name}` not found"),
+            Error::Type(e) => write!(f, "{e}"),
         }
+    }
+}
+
+impl From<typeck::Error> for Error {
+    fn from(value: typeck::Error) -> Self {
+        Self::Type(value)
     }
 }
 
@@ -199,10 +207,10 @@ pub struct ModuleGen {
 }
 
 impl ModuleGen {
-    pub fn add(&mut self, ast: &Ast<Root>) -> FuncId {
+    pub fn add(&mut self, ast: &Ast<Root>) -> Result<FuncId> {
         // let main = code.get_function(main);
 
-        let main = self.types.process(ast).unwrap();
+        let main = self.types.process(ast)?;
         self.types.dump();
 
         // self.functions.clear();
@@ -553,7 +561,7 @@ impl ModuleGen {
             }
         }
 
-        main
+        Ok(main)
     }
 
     pub fn add_extern<F: FnAsLlvm>(&mut self, name: &str, f: F) -> Result<()> {

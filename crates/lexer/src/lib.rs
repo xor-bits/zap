@@ -1,5 +1,5 @@
 #[cfg(test)]
-use serde::{ser::SerializeStruct, Serialize};
+use serde::Serialize;
 use std::{fmt, ops::Range};
 
 //
@@ -279,16 +279,20 @@ pub enum TokenType {
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SpannedToken<'a> {
+pub struct SpannedToken {
     token: Token,
-    span: Span<'a>,
+    span: Span,
 }
 
-impl<'a> SpannedToken<'a> {
-    pub const fn from_whole_str(token: Token, str: &'a str) -> Self {
+impl SpannedToken {
+    pub const fn empty(token: Token) -> Self {
+        Self::from_range(token, 0..0)
+    }
+
+    pub const fn from_range(token: Token, range: Range<usize>) -> Self {
         Self {
             token,
-            span: Span::from_whole_str(str),
+            span: Span::from_range(range),
         }
     }
 
@@ -296,70 +300,63 @@ impl<'a> SpannedToken<'a> {
         self.token
     }
 
-    pub fn span(&self) -> Range<usize> {
-        self.span.span()
+    pub fn span(&self) -> Span {
+        self.span
     }
 
-    pub fn source(&self) -> &'a str {
-        self.span.source()
+    pub fn as_range(&self) -> Range<usize> {
+        self.span.as_range()
     }
 
-    pub fn as_str(&self) -> &'a str {
-        self.span.as_str()
+    pub fn as_str<'a>(&self, source: &'a str) -> &'a str {
+        self.span.as_str(source)
     }
 }
 
-impl fmt::Display for SpannedToken<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.token == Token::Eoi {
-            write!(f, "<eoi>")
-        } else {
-            f.write_str(self.as_str())
-        }
-    }
-}
+// impl fmt::Display for SpannedToken {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         if self.token == Token::Eoi {
+//             write!(f, "<eoi>")
+//         } else {
+//             f.write_str(self.as_str())
+//         }
+//     }
+// }
 
 //
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Span<'a> {
+pub struct Span {
     from: usize,
     to: usize,
-    source: &'a str,
 }
 
-impl<'a> Span<'a> {
-    pub const fn from_whole_str(str: &'a str) -> Self {
+impl Span {
+    pub const fn empty() -> Self {
+        Self::from_range(0..0)
+    }
+
+    pub fn merge(self, other: Self) -> Self {
         Self {
-            from: 0,
-            to: str.len(),
-            source: str,
+            from: self.from.min(other.from),
+            to: self.to.min(other.to),
         }
     }
 
-    pub fn span(&self) -> Range<usize> {
+    pub const fn from_range(range: Range<usize>) -> Self {
+        Self {
+            from: range.start,
+            to: range.end,
+        }
+    }
+
+    pub fn as_range(&self) -> Range<usize> {
         self.from..self.to
     }
 
-    pub fn source(&self) -> &'a str {
-        self.source
-    }
-
-    pub fn as_str(&self) -> &'a str {
-        &self.source[self.span()]
-    }
-}
-
-#[cfg(test)]
-impl Serialize for Span<'_> {
-    fn serialize<S>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("SpannedToken", 3)?;
-        s.serialize_field("range", &format!("{:?}", self.span()))?;
-        s.serialize_field("str", &self.as_str())?;
-        s.end()
+    pub fn as_str<'a>(&self, source: &'a str) -> &'a str {
+        &source[self.as_range()]
     }
 }
 
@@ -383,6 +380,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    pub const fn source(&self) -> &'a str {
+        self.source
+    }
+
     // pub const fn error(&self) -> Result<()> {
     //     self.err
     // }
@@ -396,25 +397,24 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self, span: &Span) {
-        self.advance_by(span.span().len())
+        self.advance_by(span.as_range().len())
     }
 
-    fn span_to(&self, len: usize) -> Span<'a> {
+    fn span_to(&self, len: usize) -> Span {
         let at = self.src_index();
         Span {
             from: at,
             to: at + len,
-            source: self.source,
         }
     }
 
-    fn spanned_token_to(&mut self, token: Token, len: usize) -> Option<Result<SpannedToken<'a>>> {
+    fn spanned_token_to(&mut self, token: Token, len: usize) -> Option<Result<SpannedToken>> {
         let span = self.span_to(len);
         self.advance(&span);
         Some(Ok(SpannedToken { token, span }))
     }
 
-    fn try_match(&mut self, token: Token) -> Option<Result<SpannedToken<'a>>> {
+    fn try_match(&mut self, token: Token) -> Option<Result<SpannedToken>> {
         let TokenType::Symbols(str) = token.token_type() else {
             return None;
         };
@@ -425,7 +425,7 @@ impl<'a> Lexer<'a> {
         self.spanned_token_to(token, str.len())
     }
 
-    fn try_match_number(&mut self) -> Option<Result<SpannedToken<'a>>> {
+    fn try_match_number(&mut self) -> Option<Result<SpannedToken>> {
         let first = self.at.chars().next()?;
 
         if !first.is_ascii_digit() {
@@ -459,7 +459,7 @@ impl<'a> Lexer<'a> {
         self.spanned_token_to(token, term)
     }
 
-    fn try_match_str(&mut self) -> Option<Result<SpannedToken<'a>>> {
+    fn try_match_str(&mut self) -> Option<Result<SpannedToken>> {
         if !self.at.starts_with('"') {
             return None;
         }
@@ -471,7 +471,7 @@ impl<'a> Lexer<'a> {
         self.spanned_token_to(Token::LitStr, term + 2)
     }
 
-    fn try_match_ident(&mut self) -> Option<Result<SpannedToken<'a>>> {
+    fn try_match_ident(&mut self) -> Option<Result<SpannedToken>> {
         let first = self.at.chars().next()?;
 
         if !(first == '_' || first.is_alphabetic()) {
@@ -486,7 +486,7 @@ impl<'a> Lexer<'a> {
         self.spanned_token_to(Token::Ident, term)
     }
 
-    fn try_match_comment(&mut self) -> Option<Result<SpannedToken<'a>>> {
+    fn try_match_comment(&mut self) -> Option<Result<SpannedToken>> {
         if !self.at.starts_with("//") {
             return None;
         }
@@ -500,19 +500,19 @@ impl<'a> Lexer<'a> {
         self.spanned_token_to(Token::LineComment, term)
     }
 
-    fn err(&mut self, err: Error) -> Option<Result<SpannedToken<'a>>> {
+    fn err(&mut self, err: Error) -> Option<Result<SpannedToken>> {
         self.eoi = true;
         Some(Err(err))
     }
 
-    fn eoi(&mut self) -> Option<Result<SpannedToken<'a>>> {
+    fn eoi(&mut self) -> Option<Result<SpannedToken>> {
         self.eoi = true;
         self.spanned_token_to(Token::Eoi, 0)
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<SpannedToken<'a>>;
+    type Item = Result<SpannedToken>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eoi {
@@ -566,7 +566,7 @@ impl<'a> Iterator for Lexer<'a> {
                         _ => None,
                     })
             {
-                if ident.as_str() == s {
+                if ident.as_str(self.source()) == s {
                     return Some(Ok(SpannedToken {
                         token,
                         span: ident.span,

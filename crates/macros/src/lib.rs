@@ -47,23 +47,30 @@ fn try_derive_single_token(input: syn::DeriveInput) -> syn::Result<TokenStream> 
 
 fn generate_single_token_impl(
     id: Ident,
-    data: Data,
+    _data: Data,
     target_token: TokenStream,
 ) -> syn::Result<TokenStream> {
-    let data = match data {
-        syn::Data::Struct(data) => data,
-        _ => return err(Span::call_site(), "only unit structs are supported"),
-    };
+    // let data = match data {
+    //     syn::Data::Struct(data) => data,
+    //     _ => return err(Span::call_site(), "only unit structs are supported"),
+    // };
 
-    match data.fields {
-        syn::Fields::Unit => {}
-        _ => return err(Span::call_site(), "only unit structs are supported"),
-    }
+    // match data.fields {
+    //     syn::Fields::Unit => {}
+    //     _ => return err(Span::call_site(), "only unit structs are supported"),
+    // }
 
     Ok(quote! {
         impl SingleToken for #id {
             const TOKEN: Token = #target_token;
-            const SELF: Self = Self;
+
+            fn new(span: Span) -> Self {
+                Self(span)
+            }
+
+            fn span(&self) -> Span {
+                self.0
+            }
         }
 
         impl Parse for #id {

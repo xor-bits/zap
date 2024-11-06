@@ -155,7 +155,7 @@ impl Compiler {
 
         // TODO: type checking before code gen
 
-        let main = module.add(&ast);
+        let main = module.add(&ast)?;
         module.run(main);
 
         // .expect("code generation should not fail");

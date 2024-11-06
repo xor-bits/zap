@@ -1,7 +1,9 @@
-use lexer::Token;
+use lexer::{Span, Token};
 use macros::Parse;
 
 use crate::{Parse, ParseStream, Result, SingleToken};
+
+use std::ops::Range;
 
 #[cfg(test)]
 use serde::Serialize;
@@ -14,7 +16,7 @@ macro_rules! simple_tokens {
         #[cfg_attr(test, derive(Serialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Parse)]
         #[token(Token::$variant)]
-        pub struct $variant;
+        pub struct $variant(pub Span);
     )*};
 }
 

@@ -1,8 +1,10 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    fmt,
     rc::Rc,
 };
 
+use lexer::Span;
 use parser::ast::{
     self, AnyExpr, Ast, BinaryOp, Call, Cond, Expr, Func, Init, Loop, Return, Root, Set, Stmt, Test,
 };
@@ -14,11 +16,32 @@ pub enum Error {
     VariableNotFound(String),
     NotCallable,
     InvalidType,
+    UnexpectedType {
+        span: Span,
+        expected: LinkedType,
+        got: LinkedType,
+    },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::VariableNotFound(v) => write!(f, "variable not found: {v}"),
+            Error::NotCallable => write!(f, "variable is not a function"),
+            Error::InvalidType => write!(f, "type mismatch"),
+            Error::UnexpectedType { .. } => {
+                write!(f, "unexpected type")
+            }
+        }
+    }
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 //
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LinkedType(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarId(pub usize);
@@ -379,25 +402,34 @@ impl Process for Call {
     type Return = TmpId;
 
     fn process(&self, module: &mut Module, function: &mut Function) -> Result<Self::Return> {
-        let args = self
-            .args()
-            .map(|expr| expr.process(module, function))
-            .collect::<Result<Box<[_]>>>()?;
-
         let func = self.func.process(module, function)?;
         let Type::Func(func_id) = module.types.type_links[function.temporaries[func.0].0] else {
             return Err(Error::NotCallable);
         };
 
+        let args = self
+            .args()
+            .map(|expr| expr.process(module, function))
+            .collect::<Result<Box<[_]>>>()?;
+
         let func_ref = &module.functions[func_id.0];
         let dst = function.new_tmpid(func_ref.returns);
 
-        for (arg, param) in args.iter().zip(func_ref.params.iter()) {
-            let arg_ty = module.types.type_links[function.temporaries[arg.0].0];
-            let param_ty = module.types.type_links[param.0];
+        for ((arg, span), param_lty) in args
+            .iter()
+            .zip(self.args().map(|e| e.span()))
+            .zip(func_ref.params.iter().copied())
+        {
+            let arg_lty = function.temporaries[arg.0];
+            let arg_ty = module.types.type_links[arg_lty.0];
+            let param_ty = module.types.type_links[param_lty.0];
 
             if arg_ty != param_ty {
-                return Err(Error::InvalidType);
+                return Err(Error::UnexpectedType {
+                    span,
+                    expected: param_lty,
+                    got: arg_lty,
+                });
             }
         }
 
@@ -748,9 +780,6 @@ pub struct Types {
     type_links: Vec<Type>,
     known_type_links: Option<HashMap<Type, LinkedType>>,
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct LinkedType(usize);
 
 impl Types {
     pub fn create(&mut self) -> LinkedType {

@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // compiler.add_extern("printi", Type::Void, &[Type::Str]);
     compiler.add("rand", || rng.next()).unwrap();
-    compiler.add("printi", |i: i32| println!("{i}")).unwrap();
-    compiler.add("prints", |s: Str| println!("{s}")).unwrap();
+    compiler.add("print", |i: i32| println!("{i}")).unwrap();
+    compiler.add("print", |s: Str| println!("{s}")).unwrap();
     compiler
         .add("wait", || thread::sleep(Duration::from_millis(200)))
         .unwrap();
@@ -26,11 +26,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .run(
             "            
             fib := fn() {
-                prints(\"Fibonacci sequence:\");
+                print(\"Fibonacci sequence:\");
                 a := 0;
                 b := 1;
                 for {
-                    printi(a);
+                    print(a);
                     a, b = b, a + b;
                     wait();
 
@@ -41,17 +41,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             fizzbuzz := fn() {
-                prints(\"FizzBuzz:\");
+                print(\"FizzBuzz:\");
                 i := 1;
                 for {
                     if ((i % 3) == 0) && ((i % 5) == 0) {
-                        prints(\"FizzBuzz\");
+                        print(\"FizzBuzz\");
                     } else if (i % 3) == 0 {
-                        prints(\"Fizz\");
+                        print(\"Fizz\");
                     } else if (i % 5) == 0 {
-                        prints(\"Buzz\");
+                        print(\"Buzz\");
                     } else {
-                        printi(i);
+                        print(i);
                     }
 
                     wait();
@@ -60,13 +60,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             print_randoms := fn() {
-                prints(\"Random numbers:\");
+                print(\"Random numbers:\");
                 i := 20;
                 for {
                     if i == 0 {
                         return;
                     }
-                    printi(rand());
+                    print(rand());
                     i = i - 1;
                 }
             }

@@ -1,6 +1,7 @@
 use core::fmt;
 
-use crate::{unexpected, Parse, ParseStream, Result, Token, TypeId};
+use crate::{unexpected, Parse, ParseStream, Result, SingleToken, Token, TypeId};
+use lexer::Span;
 use macros::Parse;
 
 use token::*;
@@ -126,9 +127,8 @@ impl<T: Parse> Parse for CommaSeparated<T> {
         let first = tokens.parse()?;
         let mut inner = Vec::new();
         while tokens.peek1(Token::Comma) {
-            _ = tokens.next();
             inner.push(CommaSeparatedItem {
-                comma: Comma,
+                comma: tokens.parse()?,
                 item: tokens.parse()?,
             });
         }
@@ -228,6 +228,12 @@ pub struct Block {
     pub stmts: Vec<Stmt>,
     pub auto_return: bool,
     pub close: RBrace,
+}
+
+impl Block {
+    pub fn span(&self) -> Span {
+        self.open.span().merge(self.close.span())
+    }
 }
 
 impl Parse for Block {
@@ -461,6 +467,12 @@ pub struct Expr {
     pub expr: AnyExpr,
 }
 
+impl Expr {
+    pub fn span(&self) -> Span {
+        self.expr.span()
+    }
+}
+
 // impl AstDisplay for Expr {
 //     fn fmt(&self, f: &mut fmt::Formatter, i: Indent) -> fmt::Result {
 
@@ -549,6 +561,20 @@ pub enum AnyExpr {
         op: BinaryOp,
         sides: Box<(Expr, Expr)>,
     },
+}
+
+impl AnyExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            AnyExpr::Block(v) => v.span(),
+            AnyExpr::LitInt(v) => v.span(),
+            AnyExpr::LitStr(v) => v.span(),
+            AnyExpr::Load(v) => v.span(),
+            AnyExpr::Func(v) => v.span(),
+            AnyExpr::Call(v) => v.span(),
+            AnyExpr::Binary { sides, .. } => sides.0.span().merge(sides.1.span()),
+        }
+    }
 }
 
 impl From<AnyExpr> for Expr {
@@ -746,6 +772,10 @@ pub struct Call {
 }
 
 impl Call {
+    pub fn span(&self) -> Span {
+        self.func.span().merge(self.args_end.span())
+    }
+
     pub fn args(&self) -> impl ExactSizeIterator<Item = &Expr> {
         OptionInner {
             inner: self.args.as_ref().map(|s| s.iter()),
@@ -831,6 +861,12 @@ pub struct Func {
     pub block: Block,
 }
 
+impl Func {
+    pub fn span(&self) -> Span {
+        self.proto.fn_kw.span().merge(self.block.span())
+    }
+}
+
 //
 
 #[cfg_attr(test, derive(Serialize))]
@@ -847,14 +883,22 @@ pub struct Argument {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ident {
     pub value: String,
+    span: Span,
+}
+
+impl Ident {
+    pub fn span(&self) -> Span {
+        self.span
+    }
 }
 
 impl Parse for Ident {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let tok = tokens.expect_next(Token::Ident)?;
-        let value = tok.as_str().to_string();
+        let span = tok.span();
+        let value = tok.as_str(tokens.source()).to_string();
 
-        Ok(Ident { value })
+        Ok(Ident { value, span })
     }
 }
 
@@ -864,15 +908,23 @@ impl Parse for Ident {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitStr {
     pub value: String,
+    span: Span,
+}
+
+impl LitStr {
+    pub fn span(&self) -> Span {
+        self.span
+    }
 }
 
 impl Parse for LitStr {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let tok = tokens.expect_next(Token::LitStr)?;
-        let tok = tok.as_str();
+        let span = tok.span();
+        let tok = tok.as_str(tokens.source());
         let value = tok[1..tok.len() - 1].to_string();
 
-        Ok(LitStr { value })
+        Ok(LitStr { value, span })
     }
 }
 
@@ -882,13 +934,24 @@ impl Parse for LitStr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LitInt {
     pub value: i128,
+    span: Span,
+}
+
+impl LitInt {
+    pub fn span(&self) -> Span {
+        self.span
+    }
 }
 
 impl Parse for LitInt {
     fn parse(tokens: &mut ParseStream) -> Result<Self> {
         let tok = tokens.expect_next(Token::LitInt)?;
-        let value = tok.as_str().parse().expect("this is a bug in the lexer");
+        let span = tok.span();
+        let value = tok
+            .as_str(tokens.source())
+            .parse()
+            .expect("this is a bug in the lexer");
 
-        Ok(LitInt { value })
+        Ok(LitInt { value, span })
     }
 }
