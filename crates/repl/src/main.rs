@@ -17,16 +17,32 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // compiler.add_extern("printi", Type::Void, &[Type::Str]);
     compiler.add("rand", || rng.next()).unwrap();
-    compiler.add("print", |i: i32| println!("{i}")).unwrap();
-    compiler.add("print", |s: Str| println!("{s}")).unwrap();
+    compiler.add("printi", |i: i32| println!("{i}")).unwrap();
+    compiler.add("prints", |s: Str| println!("{s}")).unwrap();
     compiler
         .add("wait", || thread::sleep(Duration::from_millis(200)))
         .unwrap();
+    compiler.run(
+        r#"
+            prints("Fibonacci sequence:");
+            a := 0;
+            b := 1;
+            for {
+                printi(a);
+                a, b = b, a + b;
+                wait();
+
+                if a >= 100 {
+                    return;
+                }
+            }
+        "#,
+    )?;
     compiler
         .run(
-            "            
+            r#"            
             fib := fn() {
-                print(\"Fibonacci sequence:\");
+                print("Fibonacci sequence:");
                 a := 0;
                 b := 1;
                 for {
@@ -41,15 +57,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             fizzbuzz := fn() {
-                print(\"FizzBuzz:\");
+                print("FizzBuzz:");
                 i := 1;
                 for {
                     if ((i % 3) == 0) && ((i % 5) == 0) {
-                        print(\"FizzBuzz\");
+                        print("FizzBuzz");
                     } else if (i % 3) == 0 {
-                        print(\"Fizz\");
+                        print("Fizz");
                     } else if (i % 5) == 0 {
-                        print(\"Buzz\");
+                        print("Buzz");
                     } else {
                         print(i);
                     }
@@ -60,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             print_randoms := fn() {
-                print(\"Random numbers:\");
+                print("Random numbers:");
                 i := 20;
                 for {
                     if i == 0 {
@@ -79,7 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 print_randoms();
             }
-        ",
+        "#,
         )
         .unwrap();
 
